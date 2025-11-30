@@ -169,18 +169,22 @@ class BacktestRequest(BaseModel):
 # STATIC FILES & DASHBOARD
 # =====================================================
 
-# Mount static files
+# Mount static files if directory exists
 if os.path.exists(STATIC_DIR):
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+    logger.info(f"📁 Static files mounted from: {STATIC_DIR}")
+else:
+    logger.warning(f"⚠️ Static directory not found: {STATIC_DIR}")
 
 
 @app.get("/dashboard", tags=["Dashboard"], include_in_schema=False)
 async def dashboard():
     """Serve the main dashboard page"""
     index_path = os.path.join(STATIC_DIR, "index.html")
+    logger.info(f"Looking for dashboard at: {index_path}")
     if os.path.exists(index_path):
-        return FileResponse(index_path)
-    return {"error": "Dashboard not found"}
+        return FileResponse(index_path, media_type="text/html")
+    return {"error": "Dashboard not found", "path": index_path, "static_dir": STATIC_DIR}
 
 
 # =====================================================
@@ -193,13 +197,15 @@ async def root():
     # Return dashboard if exists, otherwise API info
     index_path = os.path.join(STATIC_DIR, "index.html")
     if os.path.exists(index_path):
-        return FileResponse(index_path)
+        return FileResponse(index_path, media_type="text/html")
     
     return {
         "name": "KLTN Stock Prediction API",
         "version": "2.0.0",
         "database": "PostgreSQL",
         "dashboard": "/dashboard",
+        "static_dir": STATIC_DIR,
+        "static_exists": os.path.exists(STATIC_DIR),
         "endpoints": {
             "stocks": {
                 "GET /api/stocks": "List all stocks",
