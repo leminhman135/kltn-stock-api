@@ -218,7 +218,11 @@
                     <div class="card">
                         <div class="card-header">
                             <div class="card-title"><i class="fas fa-table"></i> Bảng giá VN30</div>
-                            <button class="btn btn-success" onclick="fetchAllData()"><i class="fas fa-download"></i> Fetch All</button>
+                            <div style="display:flex;gap:12px;align-items:center;">
+                                <input type="date" id="marketDate" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-primary);color:var(--text-primary);font-size:0.875rem;" title="Chọn ngày xem">
+                                <button class="btn btn-outline" onclick="loadMarketTable()"><i class="fas fa-search"></i> Xem</button>
+                                <button class="btn btn-success" onclick="fetchAllData()"><i class="fas fa-download"></i> Fetch All</button>
+                            </div>
                         </div>
                         <div class="card-body">
                             <div class="table-container">
@@ -356,19 +360,26 @@
         async function loadMarketTable() {
             const tbody = document.getElementById('marketTable');
             tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:40px;">Đang tải...</td></tr>';
+            const selectedDate = document.getElementById('marketDate').value;
             const rows = [];
             for (const s of stocks.slice(0, 30)) {
                 try {
-                    const r = await fetch(API + `/api/prices/${s.symbol}/latest`);
+                    let url = API + `/api/prices/${s.symbol}/latest`;
+                    if (selectedDate) {
+                        url = API + `/api/prices/${s.symbol}/by-date?date=${selectedDate}`;
+                    }
+                    const r = await fetch(url);
                     if (r.ok) {
                         const p = await r.json();
-                        const chg = p.close - p.open, pct = (chg / p.open * 100).toFixed(2);
-                        const cls = chg > 0 ? 'up' : chg < 0 ? 'down' : 'neutral';
-                        rows.push(`<tr style="cursor:pointer" onclick="selectStock('${s.symbol}');document.querySelector('[data-page=dashboard]').click()"><td><strong>${s.symbol}</strong></td><td>${s.name?.substring(0,20)||'--'}</td><td>${fmtPrice(p.close)}</td><td class="${cls}">${chg>=0?'+':''}${(chg*1000).toFixed(0)}</td><td class="${cls}">${chg>=0?'+':''}${pct}%</td><td>${fmtVol(p.volume)}</td><td>${fmtPrice(p.high)}</td><td>${fmtPrice(p.low)}</td><td>${p.date}</td></tr>`);
+                        if (p && p.close) {
+                            const chg = p.close - p.open, pct = (chg / p.open * 100).toFixed(2);
+                            const cls = chg > 0 ? 'up' : chg < 0 ? 'down' : 'neutral';
+                            rows.push(`<tr style="cursor:pointer" onclick="selectStock('${s.symbol}');document.querySelector('[data-page=dashboard]').click()"><td><strong>${s.symbol}</strong></td><td>${s.name?.substring(0,20)||'--'}</td><td>${fmtPrice(p.close)}</td><td class="${cls}">${chg>=0?'+':''}${(chg*1000).toFixed(0)}</td><td class="${cls}">${chg>=0?'+':''}${pct}%</td><td>${fmtVol(p.volume)}</td><td>${fmtPrice(p.high)}</td><td>${fmtPrice(p.low)}</td><td>${p.date}</td></tr>`);
+                        }
                     }
                 } catch(e) {}
             }
-            tbody.innerHTML = rows.length ? rows.join('') : '<tr><td colspan="9" style="text-align:center;color:var(--text-secondary);padding:40px;">Chưa có dữ liệu</td></tr>';
+            tbody.innerHTML = rows.length ? rows.join('') : '<tr><td colspan="9" style="text-align:center;color:var(--text-secondary);padding:40px;">Không có dữ liệu cho ngày này</td></tr>';
         }
 
         function initChart() {
@@ -393,6 +404,7 @@
             oneYearAgo.setFullYear(today.getFullYear() - 1);
             document.getElementById('toDate').value = today.toISOString().split('T')[0];
             document.getElementById('fromDate').value = oneYearAgo.toISOString().split('T')[0];
+            document.getElementById('marketDate').value = today.toISOString().split('T')[0];
         }
         initDates();
 

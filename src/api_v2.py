@@ -349,6 +349,42 @@ async def get_latest_price(symbol: str, db: Session = Depends(get_db)):
     return latest
 
 
+@app.get("/api/prices/{symbol}/by-date", response_model=StockPriceResponse, tags=["Prices"])
+async def get_price_by_date(
+    symbol: str, 
+    date: str = Query(..., description="Ngày cần xem (YYYY-MM-DD)"),
+    db: Session = Depends(get_db)
+):
+    """Get price for a specific date"""
+    stock = db.query(Stock).filter(Stock.symbol == symbol).first()
+    if not stock:
+        raise HTTPException(status_code=404, detail=f"Stock {symbol} not found")
+    
+    from datetime import datetime
+    try:
+        target_date = datetime.strptime(date, '%Y-%m-%d').date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+    
+    # Try exact date first
+    price = db.query(StockPrice).filter(
+        StockPrice.stock_id == stock.id,
+        StockPrice.date == target_date
+    ).first()
+    
+    # If no data for exact date, get closest previous date
+    if not price:
+        price = db.query(StockPrice).filter(
+            StockPrice.stock_id == stock.id,
+            StockPrice.date <= target_date
+        ).order_by(desc(StockPrice.date)).first()
+    
+    if not price:
+        raise HTTPException(status_code=404, detail=f"No price data for {symbol} on or before {date}")
+    
+    return price
+
+
 @app.get("/api/prices/{symbol}/ohlcv", tags=["Prices"])
 async def get_ohlcv(
     symbol: str,
