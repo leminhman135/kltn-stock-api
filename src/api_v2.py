@@ -1335,12 +1335,237 @@ async def get_intraday_data(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# =====================================================
+# ADVANCED BACKTEST ENDPOINT (using new engine)
+# =====================================================
+
+@app.post("/api/backtest/advanced", tags=["Backtest"])
+async def run_advanced_backtest(request: BacktestRequest, db: Session = Depends(get_db)):
+    """
+    Run advanced backtest với Backtesting Engine đầy đủ
+    
+    Metrics:
+    - Sharpe Ratio, Sortino Ratio
+    - Max Drawdown
+    - Win Rate, Profit Factor
+    - VaR 95%
+    """
+    from src.backtest.backtesting_engine import BacktestingEngine, SignalGenerator, SignalType
+    
+    stock = db.query(Stock).filter(Stock.symbol == request.symbol).first()
+    if not stock:
+        raise HTTPException(status_code=404, detail=f"Stock {request.symbol} not found")
+    
+    # Get historical prices
+    prices = db.query(StockPrice).filter(
+        StockPrice.stock_id == stock.id,
+        StockPrice.date >= request.start_date,
+        StockPrice.date <= request.end_date
+    ).order_by(StockPrice.date).all()
+    
+    if len(prices) < 30:
+        raise HTTPException(status_code=400, detail="Need at least 30 days of data")
+    
+    # Convert to DataFrame
+    price_df = pd.DataFrame([{
+        'date': p.date,
+        'Open': p.open,
+        'High': p.high,
+        'Low': p.low,
+        'Close': p.close,
+        'Volume': p.volume
+    } for p in prices])
+    
+    # Generate simple signals based on moving average crossover
+    price_df['sma_10'] = price_df['Close'].rolling(10).mean()
+    price_df['sma_30'] = price_df['Close'].rolling(30).mean()
+    
+    signals = {}
+    for idx, row in price_df.iterrows():
+        date = row['date']
+        if pd.isna(row['sma_10']) or pd.isna(row['sma_30']):
+            signals[date] = 'HOLD'
+        elif row['sma_10'] > row['sma_30']:
+            signals[date] = 'BUY'
+        else:
+            signals[date] = 'SELL'
+    
+    signals_series = pd.Series(signals)
+    
+    # Run backtest
+    engine = BacktestingEngine(
+        initial_capital=request.initial_capital,
+        commission_rate=0.001,
+        slippage=0.001
+    )
+    
+    result = engine.run(
+        price_df, 
+        signals_series, 
+        symbol=request.symbol,
+        stop_loss_pct=0.05,
+        take_profit_pct=0.10
+    )
+    
+    return result.to_dict()
+
+
+# =====================================================
+# ETL ENDPOINTS
+# =====================================================
+
+@app.post("/api/etl/run/{symbol}", tags=["ETL"])
+async def run_etl_pipeline(
+    symbol: str,
+    start_date: str = Query(default=None, description="Start date (YYYY-MM-DD)"),
+    end_date: str = Query(default=None, description="End date (YYYY-MM-DD)"),
+    db: Session = Depends(get_db)
+):
+    """
+    Chạy ETL pipeline cho một mã cổ phiếu
+    
+    ETL = Extract (VNDirect) -> Transform (Clean, Validate) -> Load (Database)
+    """
+    from src.etl.etl_pipeline import ETLPipeline, DatabaseLoader, VNDirectExtractor
+    from datetime import datetime, timedelta
+    
+    if start_date is None:
+        start_date = (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d')
+    if end_date is None:
+        end_date = datetime.now().strftime('%Y-%m-%d')
+    
+    try:
+        # Setup pipeline with database loader
+        loader = DatabaseLoader(db)
+        pipeline = ETLPipeline(loader=loader)
+        
+        # Run ETL
+        result = pipeline.run(symbol.upper(), start_date, end_date)
+        
+        return result.to_dict()
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/etl/validate/{symbol}", tags=["ETL"])
+async def validate_stock_data(symbol: str, db: Session = Depends(get_db)):
+    """
+    Validate dữ liệu của một mã cổ phiếu trong database
+    """
+    from src.etl.etl_pipeline import DataValidator
+    
+    stock = db.query(Stock).filter(Stock.symbol == symbol.upper()).first()
+    if not stock:
+        raise HTTPException(status_code=404, detail=f"Stock {symbol} not found")
+    
+    # Get all prices
+    prices = db.query(StockPrice).filter(
+        StockPrice.stock_id == stock.id
+    ).order_by(StockPrice.date).all()
+    
+    if not prices:
+        return {"symbol": symbol, "status": "no_data", "message": "No price data found"}
+    
+    # Convert to DataFrame
+    df = pd.DataFrame([{
+        'date': p.date,
+        'Open': p.open,
+        'High': p.high,
+        'Low': p.low,
+        'Close': p.close,
+        'Volume': p.volume
+    } for p in prices])
+    
+    # Validate
+    validator = DataValidator()
+    result = validator.validate(df)
+    
+    return {
+        "symbol": symbol.upper(),
+        "validation": result.to_dict()
+    }
+
+
+# =====================================================
+# SCHEDULER ENDPOINTS
+# =====================================================
+
+@app.get("/api/scheduler/status", tags=["Scheduler"])
+async def get_scheduler_status():
+    """Lấy trạng thái scheduler"""
+    return {
+        "status": "available",
+        "scheduler_type": "render_cron",
+        "message": "Use Render Cron Jobs or n8n for scheduling",
+        "available_tasks": [
+            {"name": "daily-data-fetch", "schedule": "0 7 * * 1-5", "description": "Fetch data 7AM UTC"},
+            {"name": "weekly-full-update", "schedule": "0 0 * * 0", "description": "Full update Sunday"},
+            {"name": "health-check", "schedule": "*/10 * * * *", "description": "Every 10 minutes"}
+        ]
+    }
+
+
+@app.get("/api/scheduler/n8n-workflow", tags=["Scheduler"])
+async def get_n8n_workflow():
+    """
+    Lấy template n8n workflow để import
+    
+    Hướng dẫn:
+    1. Copy JSON output
+    2. Mở n8n -> Workflows -> Import from JSON
+    3. Paste và configure
+    """
+    from src.scheduler.scheduler_service import N8nIntegration
+    
+    # Get base URL from request
+    base_url = "https://kltn-stock-api.onrender.com"
+    
+    n8n = N8nIntegration()
+    workflow = n8n.generate_workflow_template(base_url)
+    
+    return {
+        "message": "n8n Workflow Template - Import this JSON into n8n",
+        "instructions": [
+            "1. Open n8n (self-hosted or cloud)",
+            "2. Go to Workflows -> Import from JSON",
+            "3. Paste the 'workflow' object below",
+            "4. Configure Slack/Discord node for notifications",
+            "5. Activate the workflow"
+        ],
+        "workflow": workflow
+    }
+
+
+@app.get("/api/scheduler/render-config", tags=["Scheduler"])
+async def get_render_cron_config():
+    """
+    Lấy cấu hình Render Cron Jobs
+    
+    Thêm vào render.yaml để tự động schedule
+    """
+    from src.scheduler.scheduler_service import generate_render_cron_config
+    
+    config = generate_render_cron_config("https://kltn-stock-api.onrender.com")
+    
+    return {
+        "message": "Render Cron Jobs Configuration",
+        "instructions": [
+            "1. Copy the YAML content below",
+            "2. Add to your render.yaml file",
+            "3. Push to GitHub",
+            "4. Render will auto-create cron jobs"
+        ],
+        "yaml_config": config
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
     
     print("Starting KLTN Stock Prediction API v2.0...")
     print("📊 Documentation: http://localhost:8000/docs")
     print("📚 ReDoc: http://localhost:8000/redoc")
-    print("🔗 Database: PostgreSQL")
+    print("🔗 Database: SQLite/PostgreSQL")
     
     uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
