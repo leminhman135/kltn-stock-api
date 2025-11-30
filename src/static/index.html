@@ -129,6 +129,22 @@
         .metric-value { font-size: 1.1rem; font-weight: 600; color: var(--accent); }
         .model-desc { margin-top: 12px; font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5; }
         
+        /* News Card */
+        .news-item { background: var(--bg-primary); border-radius: 10px; padding: 16px; border-left: 4px solid var(--border); transition: all 0.2s; }
+        .news-item:hover { transform: translateX(4px); }
+        .news-item.positive { border-left-color: #10b981; }
+        .news-item.negative { border-left-color: #ef4444; }
+        .news-item.neutral { border-left-color: #94a3b8; }
+        .news-title { font-weight: 600; font-size: 0.95rem; margin-bottom: 8px; line-height: 1.4; }
+        .news-summary { font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 12px; line-height: 1.5; }
+        .news-meta { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 0.75rem; }
+        .news-source { color: var(--accent); }
+        .news-sentiment { padding: 4px 10px; border-radius: 12px; font-weight: 500; font-size: 0.7rem; }
+        .news-sentiment.positive { background: rgba(16,185,129,0.15); color: #10b981; }
+        .news-sentiment.negative { background: rgba(239,68,68,0.15); color: #ef4444; }
+        .news-sentiment.neutral { background: rgba(148,163,184,0.15); color: #94a3b8; }
+        .news-impact { font-size: 0.8rem; margin-top: 8px; padding: 8px 12px; background: rgba(59,130,246,0.1); border-radius: 6px; }
+        
         /* Toast */
         .toast { position: fixed; bottom: 24px; right: 24px; padding: 16px 24px; border-radius: 10px; background: var(--success); color: white; display: none; z-index: 1000; animation: slideIn 0.3s; }
         .toast.error { background: var(--danger); }
@@ -153,6 +169,7 @@
             <nav class="nav">
                 <div class="nav-item active" data-page="dashboard"><i class="fas fa-home"></i> Dashboard</div>
                 <div class="nav-item" data-page="market"><i class="fas fa-table"></i> Bảng giá</div>
+                <div class="nav-item" data-page="news"><i class="fas fa-newspaper"></i> Tin tức</div>
                 <div class="nav-item" data-page="models"><i class="fas fa-brain"></i> Mô hình ML</div>
                 <div class="nav-item" data-page="predict"><i class="fas fa-magic"></i> Dự đoán</div>
             </nav>
@@ -262,6 +279,55 @@
                     </div>
                 </div>
 
+                <!-- News -->
+                <div class="tab-content" id="page-news">
+                    <div class="card" style="margin-bottom:20px;">
+                        <div class="card-header">
+                            <div class="card-title"><i class="fas fa-newspaper"></i> Phân tích Tin tức & Sentiment</div>
+                            <div style="display:flex;gap:12px;align-items:center;">
+                                <select id="newsSymbol" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-primary);color:var(--text-primary);font-size:0.875rem;">
+                                    <option value="">-- Tất cả tin tức --</option>
+                                </select>
+                                <button class="btn btn-primary" onclick="loadNews()"><i class="fas fa-sync"></i> Cập nhật</button>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <!-- Sentiment Summary -->
+                            <div id="sentimentSummary" style="display:none;background:var(--bg-primary);border-radius:12px;padding:20px;margin-bottom:20px;">
+                                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;">
+                                    <div style="flex:1;min-width:200px;">
+                                        <div style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:8px;">Tổng hợp Sentiment</div>
+                                        <div id="sentimentBadge" style="font-size:1.25rem;font-weight:700;"></div>
+                                    </div>
+                                    <div style="display:flex;gap:24px;">
+                                        <div style="text-align:center;">
+                                            <div style="font-size:1.5rem;font-weight:700;color:#10b981;" id="posCount">0</div>
+                                            <div style="font-size:0.75rem;color:var(--text-secondary);">Tích cực</div>
+                                        </div>
+                                        <div style="text-align:center;">
+                                            <div style="font-size:1.5rem;font-weight:700;color:#94a3b8;" id="neuCount">0</div>
+                                            <div style="font-size:0.75rem;color:var(--text-secondary);">Trung lập</div>
+                                        </div>
+                                        <div style="text-align:center;">
+                                            <div style="font-size:1.5rem;font-weight:700;color:#ef4444;" id="negCount">0</div>
+                                            <div style="font-size:0.75rem;color:var(--text-secondary);">Tiêu cực</div>
+                                        </div>
+                                    </div>
+                                    <div id="recommendation" style="flex:1;min-width:250px;text-align:right;font-size:0.95rem;"></div>
+                                </div>
+                            </div>
+                            
+                            <!-- News List -->
+                            <div id="newsList" style="display:flex;flex-direction:column;gap:12px;">
+                                <div style="text-align:center;padding:40px;color:var(--text-secondary);">
+                                    <i class="fas fa-newspaper" style="font-size:3rem;margin-bottom:16px;opacity:0.3;"></i>
+                                    <p>Chọn mã cổ phiếu và bấm "Cập nhật" để xem tin tức</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Predict -->
                 <div class="tab-content" id="page-predict">
                     <div class="card">
@@ -302,9 +368,10 @@
                     item.classList.add('active');
                     const page = item.dataset.page;
                     document.getElementById('page-' + page).classList.add('active');
-                    const titles = {dashboard:'Dashboard',market:'Bảng giá thị trường',models:'Mô hình Machine Learning',predict:'Dự đoán giá cổ phiếu'};
-                    document.getElementById('pageTitle').textContent = titles[page];
+                    const titles = {dashboard:'Dashboard',market:'Bảng giá thị trường',news:'Tin tức & Sentiment',models:'Mô hình Machine Learning',predict:'Dự đoán giá cổ phiếu'};
+                    document.getElementById('pageTitle').textContent = titles[page] || 'Dashboard';
                     if (page === 'market') loadMarketTable();
+                    if (page === 'news') { populateNewsSymbol(); loadNews(); }
                 });
             });
             document.querySelectorAll('.time-btn').forEach(btn => {
@@ -576,6 +643,92 @@
         function fmtVol(v) { return v == null ? '--' : v >= 1e6 ? (v/1e6).toFixed(1)+'M' : v >= 1e3 ? (v/1e3).toFixed(0)+'K' : v; }
         function formatNum(n) { return n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? (n/1e3).toFixed(1)+'K' : n; }
         function toast(msg, type='success') { const t = document.getElementById('toast'); t.textContent = msg; t.className = 'toast' + (type==='error'?' error':''); t.style.display = 'block'; setTimeout(() => t.style.display = 'none', 3000); }
+
+        // =====================================================
+        // NEWS & SENTIMENT FUNCTIONS
+        // =====================================================
+        
+        function populateNewsSymbol() {
+            const select = document.getElementById('newsSymbol');
+            if (select.options.length <= 1) {
+                stocks.forEach(s => {
+                    const opt = document.createElement('option');
+                    opt.value = s.symbol;
+                    opt.textContent = `${s.symbol} - ${s.name || ''}`;
+                    select.appendChild(opt);
+                });
+            }
+        }
+
+        async function loadNews() {
+            const symbol = document.getElementById('newsSymbol').value;
+            const newsList = document.getElementById('newsList');
+            const summaryDiv = document.getElementById('sentimentSummary');
+            
+            newsList.innerHTML = '<div style="text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin" style="font-size:2rem;color:var(--accent);"></i><p style="margin-top:16px;color:var(--text-secondary);">Đang tải tin tức...</p></div>';
+            
+            try {
+                const url = symbol ? `${API}/api/news/${symbol}` : `${API}/api/news`;
+                const r = await fetch(url);
+                const data = await r.json();
+                
+                if (data.status === 'success') {
+                    // Show sentiment summary if symbol selected
+                    if (symbol && data.sentiment_summary) {
+                        summaryDiv.style.display = 'block';
+                        const sum = data.sentiment_summary;
+                        
+                        // Update counts
+                        document.getElementById('posCount').textContent = sum.positive_count || 0;
+                        document.getElementById('neuCount').textContent = sum.neutral_count || 0;
+                        document.getElementById('negCount').textContent = sum.negative_count || 0;
+                        
+                        // Update sentiment badge
+                        const badge = document.getElementById('sentimentBadge');
+                        const colors = { positive: '#10b981', negative: '#ef4444', neutral: '#94a3b8' };
+                        const labels = { positive: '🟢 TÍCH CỰC', negative: '🔴 TIÊU CỰC', neutral: '🟡 TRUNG LẬP' };
+                        badge.textContent = `${labels[sum.overall] || 'TRUNG LẬP'} (${sum.avg_score > 0 ? '+' : ''}${sum.avg_score})`;
+                        badge.style.color = colors[sum.overall] || colors.neutral;
+                        
+                        // Update recommendation
+                        document.getElementById('recommendation').innerHTML = sum.recommendation || '';
+                    } else {
+                        summaryDiv.style.display = 'none';
+                    }
+                    
+                    // Render news list
+                    const news = data.news || [];
+                    if (news.length === 0) {
+                        newsList.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-secondary);"><i class="fas fa-inbox" style="font-size:3rem;margin-bottom:16px;opacity:0.3;"></i><p>Không có tin tức</p></div>';
+                        return;
+                    }
+                    
+                    newsList.innerHTML = news.map(n => `
+                        <div class="news-item ${n.sentiment}">
+                            <div class="news-title">${n.title}</div>
+                            <div class="news-summary">${n.summary}</div>
+                            <div class="news-impact">${n.impact}</div>
+                            <div class="news-meta">
+                                <span>
+                                    <span class="news-source">${n.source}</span> • ${n.published_at}
+                                </span>
+                                <span class="news-sentiment ${n.sentiment}">
+                                    ${n.sentiment === 'positive' ? '📈 Tích cực' : n.sentiment === 'negative' ? '📉 Tiêu cực' : '➡️ Trung lập'}
+                                    (${n.sentiment_score > 0 ? '+' : ''}${n.sentiment_score})
+                                </span>
+                            </div>
+                        </div>
+                    `).join('');
+                    
+                    toast(`✓ Đã tải ${news.length} tin tức`);
+                } else {
+                    throw new Error(data.detail || 'Không thể tải tin tức');
+                }
+            } catch (e) {
+                newsList.innerHTML = `<div style="text-align:center;padding:40px;color:var(--danger);"><i class="fas fa-exclamation-circle" style="font-size:2rem;margin-bottom:16px;"></i><p>Lỗi: ${e.message}</p></div>`;
+                toast('Lỗi tải tin tức', 'error');
+            }
+        }
     </script>
 </body>
 </html>

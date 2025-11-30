@@ -589,6 +589,88 @@ async def get_latest_sentiment(symbol: str, db: Session = Depends(get_db)):
 
 
 # =====================================================
+# NEWS & SENTIMENT ANALYSIS ENDPOINTS
+# =====================================================
+
+from src.news_service import news_service
+
+@app.get("/api/news", tags=["News"])
+async def get_market_news(limit: int = 20):
+    """Lấy tin tức thị trường chung với phân tích sentiment"""
+    try:
+        news = news_service.get_all_news(symbol=None, limit=limit)
+        return {
+            "status": "success",
+            "total": len(news),
+            "news": [
+                {
+                    "title": n.title,
+                    "summary": n.summary,
+                    "url": n.url,
+                    "source": n.source,
+                    "published_at": n.published_at,
+                    "sentiment": n.sentiment.value,
+                    "sentiment_score": round(n.sentiment_score, 2),
+                    "impact": n.impact_prediction
+                }
+                for n in news
+            ]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/news/{symbol}", tags=["News"])
+async def get_stock_news(symbol: str, limit: int = 15):
+    """Lấy tin tức cho một mã cổ phiếu cụ thể với phân tích sentiment"""
+    try:
+        news = news_service.get_all_news(symbol=symbol.upper(), limit=limit)
+        summary = news_service.get_sentiment_summary(symbol.upper())
+        
+        return {
+            "status": "success",
+            "symbol": symbol.upper(),
+            "sentiment_summary": {
+                "overall": summary["sentiment"],
+                "avg_score": summary["avg_score"],
+                "positive_count": summary["positive"],
+                "negative_count": summary["negative"],
+                "neutral_count": summary["neutral"],
+                "recommendation": summary["recommendation"]
+            },
+            "total_news": len(news),
+            "news": [
+                {
+                    "title": n.title,
+                    "summary": n.summary,
+                    "url": n.url,
+                    "source": n.source,
+                    "published_at": n.published_at,
+                    "sentiment": n.sentiment.value,
+                    "sentiment_score": round(n.sentiment_score, 2),
+                    "impact": n.impact_prediction
+                }
+                for n in news
+            ]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/news/{symbol}/sentiment", tags=["News"])
+async def get_news_sentiment(symbol: str):
+    """Lấy tổng hợp sentiment từ tin tức cho một mã"""
+    try:
+        summary = news_service.get_sentiment_summary(symbol.upper())
+        return {
+            "status": "success",
+            **summary
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =====================================================
 # MODEL ENDPOINTS
 # =====================================================
 
