@@ -10,17 +10,40 @@ from typing import List, Dict, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from datetime import datetime, timedelta, date
+from contextlib import asynccontextmanager
 import pandas as pd
 import logging
 
-from src.database.connection import get_db
+from src.database.connection import get_db, engine
 from src.database.models import (
     Stock, StockPrice, TechnicalIndicator,
-    SentimentAnalysis, ModelMetrics, Prediction
+    SentimentAnalysis, ModelMetrics, Prediction, Base
 )
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+# =====================================================
+# STARTUP EVENT - AUTO CREATE TABLES
+# =====================================================
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan - runs on startup and shutdown"""
+    # Startup
+    logger.info("🚀 Starting KLTN Stock Prediction API...")
+    try:
+        # Create all tables
+        Base.metadata.create_all(bind=engine)
+        logger.info("✅ Database tables created/verified successfully!")
+    except Exception as e:
+        logger.error(f"❌ Database initialization error: {e}")
+    
+    yield
+    
+    # Shutdown
+    logger.info("👋 Shutting down KLTN Stock Prediction API...")
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -28,7 +51,8 @@ app = FastAPI(
     description="Advanced API for Vietnamese stock price prediction using ML models and PostgreSQL",
     version="2.0.0",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
+    lifespan=lifespan
 )
 
 # CORS middleware
@@ -631,6 +655,216 @@ async def run_backtest(request: BacktestRequest, db: Session = Depends(get_db)):
         },
         "message": "This is a mock result. Implement actual backtest engine for real results."
     }
+
+
+# =====================================================
+# DATABASE MANAGEMENT ENDPOINTS
+# =====================================================
+
+# VN30 stocks data
+VN30_STOCKS = [
+    {"symbol": "VNM", "name": "Công ty Cổ phần Sữa Việt Nam", "sector": "Consumer Goods", "exchange": "HOSE"},
+    {"symbol": "VIC", "name": "Tập đoàn Vingroup", "sector": "Real Estate", "exchange": "HOSE"},
+    {"symbol": "VHM", "name": "Vinhomes", "sector": "Real Estate", "exchange": "HOSE"},
+    {"symbol": "VCB", "name": "Ngân hàng TMCP Ngoại thương Việt Nam", "sector": "Banking", "exchange": "HOSE"},
+    {"symbol": "BID", "name": "Ngân hàng TMCP Đầu tư và Phát triển Việt Nam", "sector": "Banking", "exchange": "HOSE"},
+    {"symbol": "CTG", "name": "Ngân hàng TMCP Công Thương Việt Nam", "sector": "Banking", "exchange": "HOSE"},
+    {"symbol": "TCB", "name": "Ngân hàng TMCP Kỹ Thương Việt Nam", "sector": "Banking", "exchange": "HOSE"},
+    {"symbol": "MBB", "name": "Ngân hàng TMCP Quân Đội", "sector": "Banking", "exchange": "HOSE"},
+    {"symbol": "HPG", "name": "Tập đoàn Hòa Phát", "sector": "Steel", "exchange": "HOSE"},
+    {"symbol": "FPT", "name": "FPT Corporation", "sector": "Technology", "exchange": "HOSE"},
+    {"symbol": "MWG", "name": "Thế Giới Di Động", "sector": "Retail", "exchange": "HOSE"},
+    {"symbol": "VPB", "name": "Ngân hàng TMCP Việt Nam Thịnh Vượng", "sector": "Banking", "exchange": "HOSE"},
+    {"symbol": "PLX", "name": "Tập đoàn Xăng Dầu Việt Nam", "sector": "Energy", "exchange": "HOSE"},
+    {"symbol": "VJC", "name": "Vietjet Air", "sector": "Aviation", "exchange": "HOSE"},
+    {"symbol": "GAS", "name": "Tổng Công ty Khí Việt Nam", "sector": "Energy", "exchange": "HOSE"},
+    {"symbol": "SAB", "name": "Tổng Công ty Cổ phần Bia - Rượu - Nước giải khát Sài Gòn", "sector": "Consumer Goods", "exchange": "HOSE"},
+    {"symbol": "MSN", "name": "Tập đoàn Masan", "sector": "Consumer Goods", "exchange": "HOSE"},
+    {"symbol": "VRE", "name": "Vincom Retail", "sector": "Real Estate", "exchange": "HOSE"},
+    {"symbol": "NVL", "name": "Novaland", "sector": "Real Estate", "exchange": "HOSE"},
+    {"symbol": "ACB", "name": "Ngân hàng TMCP Á Châu", "sector": "Banking", "exchange": "HOSE"},
+    {"symbol": "GVR", "name": "Tập đoàn Công nghiệp Cao su Việt Nam", "sector": "Materials", "exchange": "HOSE"},
+    {"symbol": "STB", "name": "Ngân hàng TMCP Sài Gòn Thương Tín", "sector": "Banking", "exchange": "HOSE"},
+    {"symbol": "POW", "name": "Tổng Công ty Điện lực Dầu khí Việt Nam", "sector": "Energy", "exchange": "HOSE"},
+    {"symbol": "BCM", "name": "Tổng Công ty Đầu tư và Phát triển Công nghiệp", "sector": "Industrial", "exchange": "HOSE"},
+    {"symbol": "SSI", "name": "Công ty Cổ phần Chứng khoán SSI", "sector": "Securities", "exchange": "HOSE"},
+    {"symbol": "VND", "name": "Công ty Cổ phần Chứng khoán VNDirect", "sector": "Securities", "exchange": "HOSE"},
+    {"symbol": "TPB", "name": "Ngân hàng TMCP Tiên Phong", "sector": "Banking", "exchange": "HOSE"},
+    {"symbol": "HDB", "name": "Ngân hàng TMCP Phát triển TP.HCM", "sector": "Banking", "exchange": "HOSE"},
+    {"symbol": "PDR", "name": "Phát Đạt Real Estate", "sector": "Real Estate", "exchange": "HOSE"},
+    {"symbol": "SHB", "name": "Ngân hàng TMCP Sài Gòn - Hà Nội", "sector": "Banking", "exchange": "HOSE"},
+]
+
+
+@app.post("/api/admin/init-db", tags=["Admin"])
+async def init_database(db: Session = Depends(get_db)):
+    """
+    Initialize database with VN30 stocks.
+    This creates sample stocks for testing.
+    """
+    try:
+        # Check if stocks already exist
+        existing_count = db.query(Stock).count()
+        if existing_count > 0:
+            return {
+                "status": "skipped",
+                "message": f"Database already has {existing_count} stocks",
+                "hint": "Use /api/admin/reset-db to clear and reinitialize"
+            }
+        
+        # Add VN30 stocks
+        added = 0
+        for stock_data in VN30_STOCKS:
+            stock = Stock(
+                symbol=stock_data["symbol"],
+                name=stock_data["name"],
+                sector=stock_data["sector"],
+                exchange=stock_data["exchange"],
+                is_active=True
+            )
+            db.add(stock)
+            added += 1
+        
+        db.commit()
+        
+        return {
+            "status": "success",
+            "message": f"Added {added} VN30 stocks to database",
+            "stocks_added": [s["symbol"] for s in VN30_STOCKS]
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/admin/seed-sample-data/{symbol}", tags=["Admin"])
+async def seed_sample_data(
+    symbol: str,
+    days: int = Query(default=30, ge=7, le=365),
+    db: Session = Depends(get_db)
+):
+    """
+    Seed sample price data for a stock (for testing purposes).
+    Generates mock OHLCV data.
+    """
+    import random
+    
+    stock = db.query(Stock).filter(Stock.symbol == symbol).first()
+    if not stock:
+        raise HTTPException(status_code=404, detail=f"Stock {symbol} not found. Initialize database first.")
+    
+    # Check if data exists
+    existing = db.query(StockPrice).filter(StockPrice.stock_id == stock.id).count()
+    if existing > 0:
+        return {
+            "status": "skipped",
+            "message": f"Stock {symbol} already has {existing} price records",
+            "hint": "Data already exists"
+        }
+    
+    # Generate sample data
+    base_price = random.uniform(20, 150) * 1000  # VND (20k - 150k)
+    
+    prices_added = []
+    current_date = date.today() - timedelta(days=days)
+    price = base_price
+    
+    for i in range(days):
+        if current_date.weekday() < 5:  # Skip weekends
+            # Random price movement
+            change = random.uniform(-0.03, 0.03)
+            price = price * (1 + change)
+            
+            high = price * random.uniform(1.01, 1.03)
+            low = price * random.uniform(0.97, 0.99)
+            open_price = random.uniform(low, high)
+            volume = random.randint(100000, 5000000)
+            
+            stock_price = StockPrice(
+                stock_id=stock.id,
+                date=current_date,
+                open=round(open_price, 0),
+                high=round(high, 0),
+                low=round(low, 0),
+                close=round(price, 0),
+                volume=volume,
+                source="sample_data"
+            )
+            db.add(stock_price)
+            prices_added.append(current_date.isoformat())
+        
+        current_date += timedelta(days=1)
+    
+    db.commit()
+    
+    return {
+        "status": "success",
+        "symbol": symbol,
+        "records_added": len(prices_added),
+        "date_range": {
+            "from": prices_added[0] if prices_added else None,
+            "to": prices_added[-1] if prices_added else None
+        }
+    }
+
+
+@app.delete("/api/admin/reset-db", tags=["Admin"])
+async def reset_database(
+    confirm: bool = Query(False, description="Set to true to confirm reset"),
+    db: Session = Depends(get_db)
+):
+    """
+    Reset database - DELETE ALL DATA!
+    Use with caution!
+    """
+    if not confirm:
+        return {
+            "status": "confirmation_required",
+            "message": "Add ?confirm=true to URL to confirm database reset",
+            "warning": "This will DELETE ALL DATA!"
+        }
+    
+    try:
+        # Delete in order due to foreign keys
+        db.query(Prediction).delete()
+        db.query(TechnicalIndicator).delete()
+        db.query(SentimentAnalysis).delete()
+        db.query(StockPrice).delete()
+        db.query(ModelMetrics).delete()
+        db.query(Stock).delete()
+        
+        db.commit()
+        
+        return {
+            "status": "success",
+            "message": "All data deleted successfully"
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/admin/db-status", tags=["Admin"])
+async def get_db_status(db: Session = Depends(get_db)):
+    """Get database connection status and table counts"""
+    try:
+        return {
+            "status": "connected",
+            "tables": {
+                "stocks": db.query(Stock).count(),
+                "stock_prices": db.query(StockPrice).count(),
+                "technical_indicators": db.query(TechnicalIndicator).count(),
+                "sentiment_analysis": db.query(SentimentAnalysis).count(),
+                "predictions": db.query(Prediction).count(),
+                "model_metrics": db.query(ModelMetrics).count()
+            },
+            "message": "Database connection successful"
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": str(e)
+        }
 
 
 if __name__ == "__main__":
