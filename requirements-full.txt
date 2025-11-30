@@ -1,0 +1,76 @@
+requests
+beautifulsoup4
+scrapy
+tweepy
+# Data Processing & Analysis
+pandas>=2.0.0
+numpy>=1.24.0
+scikit-learn>=1.3.0
+
+# Visualization
+matplotlib>=3.7.0
+plotly>=5.18.0
+seaborn>=0.12.0
+
+# Time Series Models
+statsmodels>=0.14.0
+prophet>=1.1.5
+arch>=6.2.0
+
+# Deep Learning
+tensorflow>=2.15.0
+torch>=2.1.0
+keras>=2.15.0
+
+# NLP & Sentiment Analysis
+transformers>=4.35.0
+sentencepiece>=0.1.99
+tokenizers>=0.15.0
+
+# Web Scraping
+scrapy>=2.11.0
+beautifulsoup4>=4.12.0
+requests>=2.31.0
+selenium>=4.15.0
+lxml>=4.9.0
+
+# API & Web Framework
+fastapi>=0.104.0
+uvicorn>=0.24.0
+streamlit>=1.28.0
+pydantic>=2.5.0
+
+# Database
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.9
+alembic>=1.13.0
+pymongo>=4.6.0
+
+# Backtesting
+backtrader>=1.9.78
+vectorbt>=0.26.0
+
+# Financial Data
+yfinance>=0.2.32
+alpha-vantage>=2.3.1
+vnstock>=0.2.7
+
+# Utilities
+python-dotenv>=1.0.0
+tqdm>=4.66.0
+joblib>=1.3.0
+schedule>=1.2.0 
+seaborn
+regex
+statsmodels
+prophet
+tensorflow
+keras
+torch
+ipykernel
+xgboost
+apache-airflow
+docker
+gunicorn
+flask
+fastapi
