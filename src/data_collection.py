@@ -6,16 +6,31 @@ Module thu thập dữ liệu từ nhiều nguồn khác nhau:
 
 import pandas as pd
 import numpy as np
-import yfinance as yf
 import requests
 from bs4 import BeautifulSoup
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime, timedelta
 import time
 import logging
-from scrapy import Spider, Request
-from scrapy.crawler import CrawlerProcess
 import json
+
+# Optional imports - only load if available
+try:
+    import yfinance as yf
+    YFINANCE_AVAILABLE = True
+except ImportError:
+    yf = None
+    YFINANCE_AVAILABLE = False
+    
+try:
+    from scrapy import Spider, Request
+    from scrapy.crawler import CrawlerProcess
+    SCRAPY_AVAILABLE = True
+except ImportError:
+    Spider = None
+    Request = None
+    CrawlerProcess = None
+    SCRAPY_AVAILABLE = False
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -26,6 +41,8 @@ class YahooFinanceAPI:
     """Thu thập dữ liệu giá cổ phiếu từ Yahoo Finance"""
     
     def __init__(self):
+        if not YFINANCE_AVAILABLE:
+            logger.warning("yfinance not installed. Yahoo Finance API will not work.")
         self.session = requests.Session()
     
     def get_stock_data(self, symbol: str, start_date: str, end_date: str, 
@@ -42,6 +59,10 @@ class YahooFinanceAPI:
         Returns:
             DataFrame với các cột: Open, High, Low, Close, Volume
         """
+        if not YFINANCE_AVAILABLE:
+            logger.error("yfinance not installed. Cannot fetch data from Yahoo Finance.")
+            return pd.DataFrame()
+            
         try:
             ticker = yf.Ticker(symbol)
             df = ticker.history(start=start_date, end=end_date, interval=interval)
@@ -239,39 +260,46 @@ class NewsScraperBS4:
             return ""
 
 
-class NewsScraperScrapy(Spider):
-    """Scrapy spider để thu thập tin tức quy mô lớn"""
-    
-    name = "financial_news_spider"
-    
-    def __init__(self, symbols: List[str] = None, *args, **kwargs):
-        super(NewsScraperScrapy, self).__init__(*args, **kwargs)
-        self.symbols = symbols or []
-        self.results = []
-    
-    def start_requests(self):
-        """Tạo các requests ban đầu"""
-        for symbol in self.symbols:
-            url = f"https://cafef.vn/timeline/{symbol.lower()}.chn"
-            yield Request(url, callback=self.parse, meta={'symbol': symbol})
-    
-    def parse(self, response):
-        """Parse trang tin tức"""
-        symbol = response.meta['symbol']
+# Only define Scrapy spider if scrapy is available
+if SCRAPY_AVAILABLE:
+    class NewsScraperScrapy(Spider):
+        """Scrapy spider để thu thập tin tức quy mô lớn"""
         
-        articles = response.css('div.timeline-head')
+        name = "financial_news_spider"
         
-        for article in articles:
-            item = {
-                'symbol': symbol,
-                'title': article.css('h3::text').get(),
-                'url': article.css('a::attr(href)').get(),
-                'date': article.css('span.time::text').get(),
-                'source': 'CafeF'
-            }
+        def __init__(self, symbols: List[str] = None, *args, **kwargs):
+            super(NewsScraperScrapy, self).__init__(*args, **kwargs)
+            self.symbols = symbols or []
+            self.results = []
+        
+        def start_requests(self):
+            """Tạo các requests ban đầu"""
+            for symbol in self.symbols:
+                url = f"https://cafef.vn/timeline/{symbol.lower()}.chn"
+                yield Request(url, callback=self.parse, meta={'symbol': symbol})
+        
+        def parse(self, response):
+            """Parse trang tin tức"""
+            symbol = response.meta['symbol']
             
-            self.results.append(item)
-            yield item
+            articles = response.css('div.timeline-head')
+            
+            for article in articles:
+                item = {
+                    'symbol': symbol,
+                    'title': article.css('h3::text').get(),
+                    'url': article.css('a::attr(href)').get(),
+                    'date': article.css('span.time::text').get(),
+                    'source': 'CafeF'
+                }
+                
+                self.results.append(item)
+                yield item
+else:
+    # Dummy class if scrapy not available
+    class NewsScraperScrapy:
+        def __init__(self, *args, **kwargs):
+            logger.warning("Scrapy not installed. NewsScraperScrapy will not work.")
 
 
 class VNDirectAPI:
