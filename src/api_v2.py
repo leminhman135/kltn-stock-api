@@ -867,6 +867,299 @@ async def get_db_status(db: Session = Depends(get_db)):
         }
 
 
+# =====================================================
+# DATA COLLECTION ENDPOINTS - Fetch Real Data from VNDirect
+# =====================================================
+
+@app.post("/api/data/fetch/{symbol}", tags=["Data Collection"])
+async def fetch_stock_data(
+    symbol: str,
+    days: int = Query(default=365, ge=7, le=1825, description="Số ngày dữ liệu (max 5 năm)"),
+    db: Session = Depends(get_db)
+):
+    """
+    Thu thập dữ liệu THỰC từ VNDirect API và lưu vào database.
+    
+    - **symbol**: Mã cổ phiếu (VNM, FPT, VCB, etc.)
+    - **days**: Số ngày dữ liệu cần lấy (mặc định 365 ngày = 1 năm)
+    
+    Dữ liệu bao gồm: Open, High, Low, Close, Volume
+    """
+    from src.data_collection import VNDirectAPI
+    from datetime import datetime, timedelta
+    
+    # Check if stock exists in database
+    stock = db.query(Stock).filter(Stock.symbol == symbol.upper()).first()
+    if not stock:
+        raise HTTPException(
+            status_code=404, 
+            detail=f"Stock {symbol} not found in database. Use /api/admin/init-db first."
+        )
+    
+    try:
+        # Initialize VNDirect API
+        vndirect = VNDirectAPI()
+        
+        # Calculate date range
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=days)
+        
+        # Fetch data from VNDirect
+        logger.info(f"Fetching data for {symbol} from VNDirect...")
+        df = vndirect.get_stock_price(
+            symbol=symbol.upper(),
+            from_date=start_date.strftime('%Y-%m-%d'),
+            to_date=end_date.strftime('%Y-%m-%d')
+        )
+        
+        if df.empty:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"No data returned from VNDirect for {symbol}"
+            )
+        
+        # Save to database
+        records_added = 0
+        records_updated = 0
+        
+        for _, row in df.iterrows():
+            # Check if record already exists
+            existing = db.query(StockPrice).filter(
+                StockPrice.stock_id == stock.id,
+                StockPrice.date == row['date'].date()
+            ).first()
+            
+            if existing:
+                # Update existing record
+                existing.open = float(row['Open'])
+                existing.high = float(row['High'])
+                existing.low = float(row['Low'])
+                existing.close = float(row['Close'])
+                existing.volume = float(row['Volume'])
+                existing.source = "vndirect"
+                records_updated += 1
+            else:
+                # Create new record
+                price = StockPrice(
+                    stock_id=stock.id,
+                    date=row['date'].date(),
+                    open=float(row['Open']),
+                    high=float(row['High']),
+                    low=float(row['Low']),
+                    close=float(row['Close']),
+                    volume=float(row['Volume']),
+                    source="vndirect"
+                )
+                db.add(price)
+                records_added += 1
+        
+        db.commit()
+        
+        # Get latest price for response
+        latest = df.iloc[-1] if len(df) > 0 else None
+        
+        return {
+            "status": "success",
+            "symbol": symbol.upper(),
+            "records_added": records_added,
+            "records_updated": records_updated,
+            "total_records": len(df),
+            "date_range": {
+                "from": df['date'].min().strftime('%Y-%m-%d'),
+                "to": df['date'].max().strftime('%Y-%m-%d')
+            },
+            "latest_price": {
+                "date": latest['date'].strftime('%Y-%m-%d') if latest is not None else None,
+                "close": float(latest['Close']) if latest is not None else None,
+                "volume": float(latest['Volume']) if latest is not None else None
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error fetching data for {symbol}: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/data/fetch-all", tags=["Data Collection"])
+async def fetch_all_stocks_data(
+    days: int = Query(default=365, ge=7, le=1825),
+    background_tasks: BackgroundTasks = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Thu thập dữ liệu cho TẤT CẢ cổ phiếu trong database.
+    
+    ⚠️ Lưu ý: Quá trình này có thể mất vài phút!
+    """
+    from src.data_collection import VNDirectAPI
+    from datetime import datetime, timedelta
+    import time
+    
+    stocks = db.query(Stock).filter(Stock.is_active == True).all()
+    
+    if not stocks:
+        raise HTTPException(
+            status_code=404,
+            detail="No stocks in database. Use /api/admin/init-db first."
+        )
+    
+    vndirect = VNDirectAPI()
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=days)
+    
+    results = []
+    success_count = 0
+    error_count = 0
+    
+    for stock in stocks:
+        try:
+            logger.info(f"Fetching {stock.symbol}...")
+            df = vndirect.get_stock_price(
+                symbol=stock.symbol,
+                from_date=start_date.strftime('%Y-%m-%d'),
+                to_date=end_date.strftime('%Y-%m-%d')
+            )
+            
+            if df.empty:
+                results.append({
+                    "symbol": stock.symbol,
+                    "status": "no_data",
+                    "records": 0
+                })
+                error_count += 1
+                continue
+            
+            # Save to database
+            records_added = 0
+            for _, row in df.iterrows():
+                existing = db.query(StockPrice).filter(
+                    StockPrice.stock_id == stock.id,
+                    StockPrice.date == row['date'].date()
+                ).first()
+                
+                if not existing:
+                    price = StockPrice(
+                        stock_id=stock.id,
+                        date=row['date'].date(),
+                        open=float(row['Open']),
+                        high=float(row['High']),
+                        low=float(row['Low']),
+                        close=float(row['Close']),
+                        volume=float(row['Volume']),
+                        source="vndirect"
+                    )
+                    db.add(price)
+                    records_added += 1
+            
+            db.commit()
+            
+            results.append({
+                "symbol": stock.symbol,
+                "status": "success",
+                "records": records_added
+            })
+            success_count += 1
+            
+            # Rate limiting - avoid overloading VNDirect
+            time.sleep(0.5)
+            
+        except Exception as e:
+            logger.error(f"Error fetching {stock.symbol}: {str(e)}")
+            results.append({
+                "symbol": stock.symbol,
+                "status": "error",
+                "error": str(e)
+            })
+            error_count += 1
+    
+    return {
+        "status": "completed",
+        "summary": {
+            "total_stocks": len(stocks),
+            "success": success_count,
+            "errors": error_count
+        },
+        "date_range": {
+            "from": start_date.strftime('%Y-%m-%d'),
+            "to": end_date.strftime('%Y-%m-%d')
+        },
+        "results": results
+    }
+
+
+@app.get("/api/data/realtime/{symbol}", tags=["Data Collection"])
+async def get_realtime_price(symbol: str):
+    """
+    Lấy giá realtime từ VNDirect (không lưu database).
+    
+    Dùng để kiểm tra giá hiện tại nhanh.
+    """
+    from src.data_collection import VNDirectAPI
+    
+    try:
+        vndirect = VNDirectAPI()
+        
+        # Get stock info (includes current price)
+        info = vndirect.get_stock_info(symbol.upper())
+        
+        if not info:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Cannot get realtime data for {symbol}"
+            )
+        
+        return {
+            "symbol": symbol.upper(),
+            "data": info,
+            "source": "vndirect",
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/data/intraday/{symbol}", tags=["Data Collection"])
+async def get_intraday_data(
+    symbol: str,
+    resolution: str = Query(default="5", description="1, 5, 15, 30, 60 (phút)")
+):
+    """
+    Lấy dữ liệu intraday (trong ngày) từ VNDirect.
+    
+    - **resolution**: 1=1 phút, 5=5 phút, 15=15 phút, 30=30 phút, 60=1 giờ
+    """
+    from src.data_collection import VNDirectAPI
+    
+    try:
+        vndirect = VNDirectAPI()
+        df = vndirect.get_intraday_data(symbol.upper(), resolution=resolution)
+        
+        if df.empty:
+            return {
+                "symbol": symbol.upper(),
+                "resolution": resolution,
+                "data": [],
+                "message": "No intraday data available (market may be closed)"
+            }
+        
+        return {
+            "symbol": symbol.upper(),
+            "resolution": f"{resolution} min",
+            "records": len(df),
+            "data": df.to_dict('records'),
+            "source": "vndirect"
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 if __name__ == "__main__":
     import uvicorn
     
