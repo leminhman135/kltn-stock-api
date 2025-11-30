@@ -271,7 +271,13 @@
         const API = '';
         let stocks = [], currentSymbol = 'VNM', days = 90, priceChart, predChart, pricesCache = {};
 
-        document.addEventListener('DOMContentLoaded', () => { loadStats(); loadStocks(); initChart(); setupNav(); });
+        document.addEventListener('DOMContentLoaded', async () => { 
+            await initDates(); 
+            loadStats(); 
+            loadStocks(); 
+            initChart(); 
+            setupNav(); 
+        });
 
         function setupNav() {
             document.querySelectorAll('.nav-item').forEach(item => {
@@ -397,15 +403,26 @@
         }
 
         // Khởi tạo ngày mặc định
-        function initDates() {
+        async function initDates() {
             const today = new Date();
             const oneYearAgo = new Date();
             oneYearAgo.setFullYear(today.getFullYear() - 1);
             document.getElementById('toDate').value = today.toISOString().split('T')[0];
             document.getElementById('fromDate').value = oneYearAgo.toISOString().split('T')[0];
-            document.getElementById('marketDate').value = today.toISOString().split('T')[0];
+            
+            // Lấy ngày giao dịch gần nhất từ API
+            try {
+                const r = await fetch(API + '/api/prices/VNM?limit=1');
+                const data = await r.json();
+                if (data && data.length > 0 && data[0].date) {
+                    document.getElementById('marketDate').value = data[0].date;
+                } else {
+                    document.getElementById('marketDate').value = today.toISOString().split('T')[0];
+                }
+            } catch(e) {
+                document.getElementById('marketDate').value = today.toISOString().split('T')[0];
+            }
         }
-        initDates();
 
         async function fetchCurrentStock() {
             if (!currentSymbol) return;
