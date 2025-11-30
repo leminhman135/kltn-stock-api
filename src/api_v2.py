@@ -5,6 +5,8 @@ REST API for Stock Prediction System
 
 from fastapi import FastAPI, HTTPException, Depends, Query, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from typing import List, Dict, Optional
 from sqlalchemy.orm import Session
@@ -13,6 +15,7 @@ from datetime import datetime, timedelta, date
 from contextlib import asynccontextmanager
 import pandas as pd
 import logging
+import os
 
 from src.database.connection import get_db, engine
 from src.database.models import (
@@ -22,6 +25,10 @@ from src.database.models import (
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Get the directory of the current file
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+STATIC_DIR = os.path.join(CURRENT_DIR, "static")
 
 
 # =====================================================
@@ -159,16 +166,40 @@ class BacktestRequest(BaseModel):
 
 
 # =====================================================
+# STATIC FILES & DASHBOARD
+# =====================================================
+
+# Mount static files
+if os.path.exists(STATIC_DIR):
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+@app.get("/dashboard", tags=["Dashboard"], include_in_schema=False)
+async def dashboard():
+    """Serve the main dashboard page"""
+    index_path = os.path.join(STATIC_DIR, "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    return {"error": "Dashboard not found"}
+
+
+# =====================================================
 # ROOT & HEALTH ENDPOINTS
 # =====================================================
 
 @app.get("/", tags=["Root"])
 async def root():
-    """API Root - List all available endpoints"""
+    """API Root - Redirect to dashboard or show API info"""
+    # Return dashboard if exists, otherwise API info
+    index_path = os.path.join(STATIC_DIR, "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    
     return {
         "name": "KLTN Stock Prediction API",
         "version": "2.0.0",
         "database": "PostgreSQL",
+        "dashboard": "/dashboard",
         "endpoints": {
             "stocks": {
                 "GET /api/stocks": "List all stocks",
