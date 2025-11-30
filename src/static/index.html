@@ -170,15 +170,9 @@
                     <p id="pageDesc">Tổng quan thị trường chứng khoán Việt Nam</p>
                 </div>
                 <div class="header-right">
-                    <select id="fetchDays" style="padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:0.875rem;">
-                        <option value="30">30 ngày</option>
-                        <option value="90">90 ngày</option>
-                        <option value="180">6 tháng</option>
-                        <option value="365" selected>1 năm</option>
-                        <option value="730">2 năm</option>
-                        <option value="1095">3 năm</option>
-                    </select>
-                    <button class="btn btn-outline" onclick="window.open('/docs','_blank')"><i class="fas fa-book"></i> API Docs</button>
+                    <input type="date" id="fromDate" style="padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:0.875rem;" title="Từ ngày">
+                    <input type="date" id="toDate" style="padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:0.875rem;" title="Đến ngày">
+                    <button class="btn btn-outline" onclick="window.open('/docs','_blank')"><i class="fas fa-book"></i> API</button>
                     <button class="btn btn-primary" onclick="fetchCurrentStock()"><i class="fas fa-sync"></i> Cập nhật</button>
                 </div>
             </header>
@@ -392,23 +386,37 @@
             priceChart.update();
         }
 
+        // Khởi tạo ngày mặc định
+        function initDates() {
+            const today = new Date();
+            const oneYearAgo = new Date();
+            oneYearAgo.setFullYear(today.getFullYear() - 1);
+            document.getElementById('toDate').value = today.toISOString().split('T')[0];
+            document.getElementById('fromDate').value = oneYearAgo.toISOString().split('T')[0];
+        }
+        initDates();
+
         async function fetchCurrentStock() {
             if (!currentSymbol) return;
-            const fetchDays = document.getElementById('fetchDays').value;
-            toast(`Đang fetch ${currentSymbol} (${fetchDays} ngày)...`);
+            const fromDate = document.getElementById('fromDate').value;
+            const toDate = document.getElementById('toDate').value;
+            if (!fromDate || !toDate) { toast('Vui lòng chọn ngày', 'error'); return; }
+            toast(`Đang fetch ${currentSymbol} (${fromDate} → ${toDate})...`);
             try {
-                const r = await fetch(API + `/api/data/fetch/${currentSymbol}?days=${fetchDays}`, { method: 'POST' });
+                const r = await fetch(API + `/api/data/fetch/${currentSymbol}?from_date=${fromDate}&to_date=${toDate}`, { method: 'POST' });
                 const d = await r.json();
                 if (d.status === 'success') { toast(`✓ ${d.records_added} records`); loadPrices(currentSymbol, days); loadStats(); }
-                else toast(d.detail || 'Error', 'error');
+                else toast(d.detail || d.message || 'Error', 'error');
             } catch(e) { toast(e.message, 'error'); }
         }
 
         async function fetchAllData() {
-            const fetchDays = document.getElementById('fetchDays').value;
-            toast(`Đang fetch tất cả (${fetchDays} ngày)...`);
+            const fromDate = document.getElementById('fromDate').value;
+            const toDate = document.getElementById('toDate').value;
+            if (!fromDate || !toDate) { toast('Vui lòng chọn ngày', 'error'); return; }
+            toast(`Đang fetch tất cả (${fromDate} → ${toDate})...`);
             try {
-                const r = await fetch(API + `/api/data/fetch-all?days=${fetchDays}`, { method: 'POST' });
+                const r = await fetch(API + `/api/data/fetch-all?from_date=${fromDate}&to_date=${toDate}`, { method: 'POST' });
                 const d = await r.json();
                 toast(`✓ ${d.summary?.success||0} mã thành công`);
                 loadStats(); loadMarketTable();

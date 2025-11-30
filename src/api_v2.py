@@ -911,14 +911,18 @@ async def get_db_status(db: Session = Depends(get_db)):
 @app.post("/api/data/fetch/{symbol}", tags=["Data Collection"])
 async def fetch_stock_data(
     symbol: str,
-    days: int = Query(default=365, ge=7, le=1825, description="Số ngày dữ liệu (max 5 năm)"),
+    days: int = Query(default=None, ge=7, le=1825, description="Số ngày dữ liệu (max 5 năm)"),
+    from_date: str = Query(default=None, description="Từ ngày (YYYY-MM-DD)"),
+    to_date: str = Query(default=None, description="Đến ngày (YYYY-MM-DD)"),
     db: Session = Depends(get_db)
 ):
     """
     Thu thập dữ liệu THỰC từ VNDirect API và lưu vào database.
     
     - **symbol**: Mã cổ phiếu (VNM, FPT, VCB, etc.)
-    - **days**: Số ngày dữ liệu cần lấy (mặc định 365 ngày = 1 năm)
+    - **days**: Số ngày dữ liệu (nếu không dùng from_date/to_date)
+    - **from_date**: Từ ngày (YYYY-MM-DD)
+    - **to_date**: Đến ngày (YYYY-MM-DD)
     
     Dữ liệu bao gồm: Open, High, Low, Close, Volume
     """
@@ -938,11 +942,15 @@ async def fetch_stock_data(
         vndirect = VNDirectAPI()
         
         # Calculate date range
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=days)
+        if from_date and to_date:
+            start_date = datetime.strptime(from_date, '%Y-%m-%d')
+            end_date = datetime.strptime(to_date, '%Y-%m-%d')
+        else:
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=days or 365)
         
         # Fetch data from VNDirect
-        logger.info(f"Fetching data for {symbol} from VNDirect...")
+        logger.info(f"Fetching data for {symbol} from {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}...")
         df = vndirect.get_stock_price(
             symbol=symbol.upper(),
             from_date=start_date.strftime('%Y-%m-%d'),
@@ -1022,12 +1030,18 @@ async def fetch_stock_data(
 
 @app.post("/api/data/fetch-all", tags=["Data Collection"])
 async def fetch_all_stocks_data(
-    days: int = Query(default=365, ge=7, le=1825),
+    days: int = Query(default=None, ge=7, le=1825),
+    from_date: str = Query(default=None, description="Từ ngày (YYYY-MM-DD)"),
+    to_date: str = Query(default=None, description="Đến ngày (YYYY-MM-DD)"),
     background_tasks: BackgroundTasks = None,
     db: Session = Depends(get_db)
 ):
     """
     Thu thập dữ liệu cho TẤT CẢ cổ phiếu trong database.
+    
+    - **days**: Số ngày dữ liệu (nếu không dùng from_date/to_date)
+    - **from_date**: Từ ngày (YYYY-MM-DD)
+    - **to_date**: Đến ngày (YYYY-MM-DD)
     
     ⚠️ Lưu ý: Quá trình này có thể mất vài phút!
     """
@@ -1044,8 +1058,14 @@ async def fetch_all_stocks_data(
         )
     
     vndirect = VNDirectAPI()
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=days)
+    
+    # Calculate date range
+    if from_date and to_date:
+        start_date = datetime.strptime(from_date, '%Y-%m-%d')
+        end_date = datetime.strptime(to_date, '%Y-%m-%d')
+    else:
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=days or 365)
     
     results = []
     success_count = 0
