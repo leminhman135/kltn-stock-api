@@ -338,8 +338,43 @@
                                 <div><label style="font-size:0.85rem;color:var(--text-secondary)">Số ngày</label><select id="predDays" style="width:100%;padding:12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-primary);color:var(--text-primary);margin-top:8px;"><option value="7">7 ngày</option><option value="14">14 ngày</option><option value="30" selected>30 ngày</option></select></div>
                                 <div><label style="font-size:0.85rem;color:var(--text-secondary)">Mô hình</label><select id="predModel" style="width:100%;padding:12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-primary);color:var(--text-primary);margin-top:8px;"><option value="ensemble">Ensemble ⭐</option><option value="lstm">LSTM</option><option value="gru">GRU</option><option value="xgboost">XGBoost</option></select></div>
                             </div>
-                            <button class="btn btn-primary" onclick="runPredict()"><i class="fas fa-play"></i> Chạy dự đoán</button>
-                            <div id="predResult" style="margin-top:24px;display:none;"><div class="chart-container"><canvas id="predChart"></canvas></div></div>
+                            <button class="btn btn-primary" onclick="runPredict()" id="predBtn"><i class="fas fa-play"></i> Chạy dự đoán</button>
+                            
+                            <div id="predResult" style="margin-top:24px;display:none;">
+                                <!-- Prediction Summary -->
+                                <div id="predSummary" style="background:var(--bg-primary);border-radius:12px;padding:20px;margin-bottom:20px;">
+                                    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:20px;">
+                                        <div>
+                                            <div style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:8px;">Kết quả dự đoán</div>
+                                            <div id="predDirection" style="font-size:1.5rem;font-weight:700;margin-bottom:8px;"></div>
+                                            <div id="predPriceRange" style="font-size:0.9rem;color:var(--text-secondary);"></div>
+                                        </div>
+                                        <div style="text-align:right;">
+                                            <div style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:8px;">Độ tin cậy</div>
+                                            <div id="predConfidence" style="font-size:1.25rem;font-weight:600;"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Reasons -->
+                                <div id="predReasons" style="background:var(--bg-primary);border-radius:12px;padding:20px;margin-bottom:20px;">
+                                    <div style="font-size:1rem;font-weight:600;margin-bottom:16px;display:flex;align-items:center;gap:8px;">
+                                        <i class="fas fa-lightbulb" style="color:#f59e0b;"></i> Lý do dự đoán
+                                    </div>
+                                    <div id="reasonsList" style="display:flex;flex-direction:column;gap:12px;"></div>
+                                </div>
+                                
+                                <!-- Chart -->
+                                <div class="chart-container"><canvas id="predChart"></canvas></div>
+                                
+                                <!-- Related News -->
+                                <div id="predNews" style="background:var(--bg-primary);border-radius:12px;padding:20px;margin-top:20px;">
+                                    <div style="font-size:1rem;font-weight:600;margin-bottom:16px;display:flex;align-items:center;gap:8px;">
+                                        <i class="fas fa-newspaper" style="color:#3b82f6;"></i> Tin tức liên quan
+                                    </div>
+                                    <div id="predNewsList" style="display:flex;flex-direction:column;gap:10px;"></div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -606,37 +641,191 @@
             } catch(e) { toast(e.message, 'error'); }
         }
 
-        function runPredict() {
+        async function runPredict() {
             const symbol = document.getElementById('predSymbol').value;
             const pdays = parseInt(document.getElementById('predDays').value);
+            const model = document.getElementById('predModel').value;
             if (!symbol) { toast('Chọn mã CK', 'error'); return; }
-            toast(`Đang dự đoán ${symbol}...`);
-            const cached = pricesCache[symbol] || [];
-            const lastPrice = cached.length ? cached[cached.length-1].close : 50;
-            const labels = [], actual = [], pred = [];
-            cached.slice(-30).forEach(d => { labels.push(d.date); actual.push(d.close); pred.push(null); });
-            let price = lastPrice;
-            for (let i = 1; i <= pdays; i++) {
-                const dt = new Date(); dt.setDate(dt.getDate() + i);
-                labels.push(dt.toISOString().split('T')[0]);
-                actual.push(null);
-                price *= (1 + (Math.random() - 0.5) * 0.03);
-                pred.push(price);
+            
+            const btn = document.getElementById('predBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang phân tích...';
+            toast(`Đang phân tích ${symbol}...`);
+            
+            try {
+                // Get price data
+                const cached = pricesCache[symbol] || [];
+                const lastPrice = cached.length ? cached[cached.length-1].close : 50;
+                const prevPrice = cached.length > 1 ? cached[cached.length-2].close : lastPrice;
+                
+                // Get sentiment from news
+                let sentimentData = null;
+                try {
+                    const newsR = await fetch(`${API}/api/news/${symbol}`);
+                    sentimentData = await newsR.json();
+                } catch(e) { console.log('News fetch error:', e); }
+                
+                // Calculate technical indicators
+                const prices = cached.map(d => d.close);
+                const volumes = cached.map(d => d.volume);
+                const sma5 = prices.length >= 5 ? prices.slice(-5).reduce((a,b) => a+b, 0) / 5 : lastPrice;
+                const sma20 = prices.length >= 20 ? prices.slice(-20).reduce((a,b) => a+b, 0) / 20 : lastPrice;
+                const avgVol = volumes.length >= 10 ? volumes.slice(-10).reduce((a,b) => a+b, 0) / 10 : 0;
+                const lastVol = cached.length ? cached[cached.length-1].volume : 0;
+                
+                // Calculate momentum
+                const momentum = prices.length >= 5 ? ((lastPrice - prices[prices.length-5]) / prices[prices.length-5] * 100) : 0;
+                
+                // Determine prediction direction based on multiple factors
+                let score = 0;
+                const reasons = [];
+                
+                // Factor 1: Sentiment from news
+                if (sentimentData?.sentiment_summary) {
+                    const sent = sentimentData.sentiment_summary;
+                    if (sent.overall === 'positive') {
+                        score += 2;
+                        reasons.push({ type: 'positive', icon: '📰', text: `Tin tức tích cực (${sent.positive_count} tin tốt)`, detail: sent.recommendation });
+                    } else if (sent.overall === 'negative') {
+                        score -= 2;
+                        reasons.push({ type: 'negative', icon: '📰', text: `Tin tức tiêu cực (${sent.negative_count} tin xấu)`, detail: sent.recommendation });
+                    } else {
+                        reasons.push({ type: 'neutral', icon: '📰', text: 'Tin tức trung lập', detail: 'Không có tín hiệu rõ ràng từ tin tức' });
+                    }
+                }
+                
+                // Factor 2: SMA crossover
+                if (lastPrice > sma5 && sma5 > sma20) {
+                    score += 1.5;
+                    reasons.push({ type: 'positive', icon: '📈', text: 'Xu hướng tăng (Golden Cross)', detail: `Giá ${fmtPrice(lastPrice)} > SMA5 ${fmtPrice(sma5)} > SMA20 ${fmtPrice(sma20)}` });
+                } else if (lastPrice < sma5 && sma5 < sma20) {
+                    score -= 1.5;
+                    reasons.push({ type: 'negative', icon: '📉', text: 'Xu hướng giảm (Death Cross)', detail: `Giá ${fmtPrice(lastPrice)} < SMA5 ${fmtPrice(sma5)} < SMA20 ${fmtPrice(sma20)}` });
+                } else {
+                    reasons.push({ type: 'neutral', icon: '➡️', text: 'Xu hướng đi ngang', detail: `SMA5: ${fmtPrice(sma5)}, SMA20: ${fmtPrice(sma20)}` });
+                }
+                
+                // Factor 3: Momentum
+                if (momentum > 3) {
+                    score += 1;
+                    reasons.push({ type: 'positive', icon: '🚀', text: `Động lượng mạnh (+${momentum.toFixed(1)}%)`, detail: 'Giá tăng mạnh trong 5 phiên gần đây' });
+                } else if (momentum < -3) {
+                    score -= 1;
+                    reasons.push({ type: 'negative', icon: '🔻', text: `Động lượng yếu (${momentum.toFixed(1)}%)`, detail: 'Giá giảm trong 5 phiên gần đây' });
+                }
+                
+                // Factor 4: Volume
+                if (lastVol > avgVol * 1.5) {
+                    const volReason = score > 0 ? 
+                        { type: 'positive', icon: '📊', text: 'Khối lượng đột biến (tích lũy)', detail: `KL hôm nay ${fmtVol(lastVol)} > TB ${fmtVol(avgVol)} - Dấu hiệu tích lũy` } :
+                        { type: 'negative', icon: '📊', text: 'Khối lượng đột biến (phân phối)', detail: `KL hôm nay ${fmtVol(lastVol)} > TB ${fmtVol(avgVol)} - Có thể đang phân phối` };
+                    reasons.push(volReason);
+                    score += score > 0 ? 0.5 : -0.5;
+                }
+                
+                // Factor 5: Price change
+                const priceChange = ((lastPrice - prevPrice) / prevPrice * 100);
+                if (priceChange > 2) {
+                    score += 0.5;
+                    reasons.push({ type: 'positive', icon: '💹', text: `Phiên trước tăng +${priceChange.toFixed(1)}%`, detail: 'Tâm lý thị trường tích cực' });
+                } else if (priceChange < -2) {
+                    score -= 0.5;
+                    reasons.push({ type: 'negative', icon: '💹', text: `Phiên trước giảm ${priceChange.toFixed(1)}%`, detail: 'Áp lực bán có thể tiếp tục' });
+                }
+                
+                // Calculate prediction
+                const direction = score > 1 ? 'up' : score < -1 ? 'down' : 'sideway';
+                const confidence = Math.min(95, 50 + Math.abs(score) * 10);
+                const volatility = direction === 'up' ? 0.015 : direction === 'down' ? -0.01 : 0.005;
+                
+                // Generate prediction data
+                const labels = [], actual = [], pred = [];
+                cached.slice(-30).forEach(d => { labels.push(d.date); actual.push(d.close); pred.push(null); });
+                
+                let price = lastPrice;
+                const drift = score * 0.003; // Base drift from score
+                for (let i = 1; i <= pdays; i++) {
+                    const dt = new Date(); dt.setDate(dt.getDate() + i);
+                    labels.push(dt.toISOString().split('T')[0]);
+                    actual.push(null);
+                    price *= (1 + drift + (Math.random() - 0.5) * 0.02);
+                    pred.push(price);
+                }
+                
+                const finalPrice = pred[pred.length - 1];
+                const changePercent = ((finalPrice - lastPrice) / lastPrice * 100);
+                
+                // Update UI - Summary
+                const directionEl = document.getElementById('predDirection');
+                if (direction === 'up') {
+                    directionEl.innerHTML = `<span style="color:#10b981;">🚀 DỰ ĐOÁN TĂNG +${changePercent.toFixed(1)}%</span>`;
+                } else if (direction === 'down') {
+                    directionEl.innerHTML = `<span style="color:#ef4444;">📉 DỰ ĐOÁN GIẢM ${changePercent.toFixed(1)}%</span>`;
+                } else {
+                    directionEl.innerHTML = `<span style="color:#f59e0b;">➡️ DỰ ĐOÁN ĐI NGANG</span>`;
+                }
+                
+                document.getElementById('predPriceRange').innerHTML = `
+                    Giá hiện tại: <strong>${fmtPrice(lastPrice)}</strong> → 
+                    Dự đoán sau ${pdays} ngày: <strong>${fmtPrice(finalPrice)}</strong>
+                `;
+                
+                document.getElementById('predConfidence').innerHTML = `
+                    <span style="color:${confidence > 70 ? '#10b981' : confidence > 50 ? '#f59e0b' : '#ef4444'};">
+                        ${confidence.toFixed(0)}%
+                    </span>
+                `;
+                
+                // Update UI - Reasons
+                document.getElementById('reasonsList').innerHTML = reasons.map(r => `
+                    <div style="display:flex;align-items:flex-start;gap:12px;padding:12px;background:var(--bg-card);border-radius:8px;border-left:3px solid ${r.type === 'positive' ? '#10b981' : r.type === 'negative' ? '#ef4444' : '#94a3b8'};">
+                        <span style="font-size:1.5rem;">${r.icon}</span>
+                        <div>
+                            <div style="font-weight:600;color:${r.type === 'positive' ? '#10b981' : r.type === 'negative' ? '#ef4444' : 'var(--text-primary)'};">${r.text}</div>
+                            <div style="font-size:0.85rem;color:var(--text-secondary);margin-top:4px;">${r.detail}</div>
+                        </div>
+                    </div>
+                `).join('');
+                
+                // Update UI - Related News
+                if (sentimentData?.news?.length) {
+                    document.getElementById('predNewsList').innerHTML = sentimentData.news.slice(0, 3).map(n => `
+                        <div style="padding:10px;background:var(--bg-card);border-radius:8px;border-left:3px solid ${n.sentiment === 'positive' ? '#10b981' : n.sentiment === 'negative' ? '#ef4444' : '#94a3b8'};">
+                            <div style="font-weight:500;font-size:0.9rem;">${n.title}</div>
+                            <div style="font-size:0.75rem;color:var(--text-secondary);margin-top:4px;">${n.source} • ${n.published_at}</div>
+                        </div>
+                    `).join('');
+                } else {
+                    document.getElementById('predNewsList').innerHTML = '<div style="color:var(--text-secondary);font-size:0.9rem;">Không có tin tức liên quan</div>';
+                }
+                
+                // Update Chart
+                if (!predChart) {
+                    predChart = new Chart(document.getElementById('predChart').getContext('2d'), {
+                        type: 'line',
+                        data: { labels, datasets: [
+                            { label: 'Thực tế', data: actual, borderColor: '#3b82f6', tension: 0.4, pointRadius: 2 }, 
+                            { label: 'Dự đoán', data: pred, borderColor: direction === 'up' ? '#10b981' : direction === 'down' ? '#ef4444' : '#f59e0b', borderDash: [5,5], tension: 0.4, pointRadius: 2 }
+                        ]},
+                        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#94a3b8' } } }, scales: { x: { grid: { color: '#334155' }, ticks: { color: '#64748b' } }, y: { grid: { color: '#334155' }, ticks: { color: '#64748b', callback: v => fmtPrice(v) } } } }
+                    });
+                } else {
+                    predChart.data.labels = labels;
+                    predChart.data.datasets[0].data = actual;
+                    predChart.data.datasets[1].data = pred;
+                    predChart.data.datasets[1].borderColor = direction === 'up' ? '#10b981' : direction === 'down' ? '#ef4444' : '#f59e0b';
+                    predChart.update();
+                }
+                
+                document.getElementById('predResult').style.display = 'block';
+                toast(`✓ Dự đoán ${symbol} hoàn tất`);
+                
+            } catch(e) {
+                toast('Lỗi: ' + e.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-play"></i> Chạy dự đoán';
             }
-            if (!predChart) {
-                predChart = new Chart(document.getElementById('predChart').getContext('2d'), {
-                    type: 'line',
-                    data: { labels, datasets: [{ label: 'Thực tế', data: actual, borderColor: '#3b82f6', tension: 0.4, pointRadius: 2 }, { label: 'Dự đoán', data: pred, borderColor: '#8b5cf6', borderDash: [5,5], tension: 0.4, pointRadius: 2 }] },
-                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#94a3b8' } } }, scales: { x: { grid: { color: '#334155' }, ticks: { color: '#64748b' } }, y: { grid: { color: '#334155' }, ticks: { color: '#64748b', callback: v => fmtPrice(v) } } } }
-                });
-            } else {
-                predChart.data.labels = labels;
-                predChart.data.datasets[0].data = actual;
-                predChart.data.datasets[1].data = pred;
-                predChart.update();
-            }
-            document.getElementById('predResult').style.display = 'block';
-            toast(`✓ Dự đoán ${symbol} hoàn tất`);
         }
 
         function fmtPrice(p) { return p == null ? '--' : new Intl.NumberFormat('vi-VN').format(p * 1000) + ' VND'; }
