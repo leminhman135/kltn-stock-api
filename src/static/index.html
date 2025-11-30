@@ -178,6 +178,21 @@
             </header>
 
             <div class="content">
+                <!-- Data Status Banner -->
+                <div id="dataStatusBanner" style="background:linear-gradient(135deg,#1e3a5f,#2d4a6f);border-radius:12px;padding:16px 20px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;border:1px solid var(--border);">
+                    <div style="display:flex;align-items:center;gap:12px;">
+                        <i class="fas fa-database" style="font-size:1.5rem;color:#3b82f6;"></i>
+                        <div>
+                            <div style="font-size:0.85rem;color:var(--text-secondary);">Dữ liệu mới nhất</div>
+                            <div style="font-size:1.1rem;font-weight:600;" id="latestDataDate">Đang kiểm tra...</div>
+                        </div>
+                    </div>
+                    <div style="display:flex;gap:10px;align-items:center;">
+                        <span id="dataStatus" style="padding:6px 12px;border-radius:20px;font-size:0.8rem;background:rgba(16,185,129,0.2);color:#10b981;"><i class="fas fa-check-circle"></i> Đã cập nhật</span>
+                        <button class="btn btn-primary" onclick="fetchLatestData()" id="fetchLatestBtn"><i class="fas fa-cloud-download-alt"></i> Fetch dữ liệu mới</button>
+                    </div>
+                </div>
+
                 <!-- Dashboard -->
                 <div class="tab-content active" id="page-dashboard">
                     <div class="stats-grid">
@@ -403,6 +418,7 @@
         }
 
         // Khởi tạo ngày mặc định
+        let latestDataDate = null;
         async function initDates() {
             const today = new Date();
             const oneYearAgo = new Date();
@@ -415,12 +431,74 @@
                 const r = await fetch(API + '/api/prices/VNM?limit=1');
                 const data = await r.json();
                 if (data && data.length > 0 && data[0].date) {
+                    latestDataDate = data[0].date;
                     document.getElementById('marketDate').value = data[0].date;
+                    updateDataStatus(data[0].date);
                 } else {
                     document.getElementById('marketDate').value = today.toISOString().split('T')[0];
+                    updateDataStatus(null);
                 }
             } catch(e) {
                 document.getElementById('marketDate').value = today.toISOString().split('T')[0];
+                updateDataStatus(null);
+            }
+        }
+
+        function updateDataStatus(dateStr) {
+            const banner = document.getElementById('latestDataDate');
+            const status = document.getElementById('dataStatus');
+            const btn = document.getElementById('fetchLatestBtn');
+            
+            if (!dateStr) {
+                banner.textContent = 'Chưa có dữ liệu';
+                status.innerHTML = '<i class="fas fa-exclamation-circle"></i> Chưa có';
+                status.style.background = 'rgba(239,68,68,0.2)';
+                status.style.color = '#ef4444';
+                return;
+            }
+            
+            const dataDate = new Date(dateStr);
+            const today = new Date();
+            const dayName = ['Chủ nhật','Thứ 2','Thứ 3','Thứ 4','Thứ 5','Thứ 6','Thứ 7'][dataDate.getDay()];
+            banner.textContent = `${dayName}, ${dateStr}`;
+            
+            // Tính số ngày chênh lệch
+            const diffDays = Math.floor((today - dataDate) / (1000 * 60 * 60 * 24));
+            
+            if (diffDays <= 1 || (today.getDay() === 1 && diffDays <= 3)) {
+                // Dữ liệu mới (hoặc là thứ 2 và dữ liệu từ thứ 6)
+                status.innerHTML = '<i class="fas fa-check-circle"></i> Đã cập nhật';
+                status.style.background = 'rgba(16,185,129,0.2)';
+                status.style.color = '#10b981';
+            } else {
+                status.innerHTML = `<i class="fas fa-clock"></i> ${diffDays} ngày trước`;
+                status.style.background = 'rgba(245,158,11,0.2)';
+                status.style.color = '#f59e0b';
+            }
+        }
+
+        async function fetchLatestData() {
+            const btn = document.getElementById('fetchLatestBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang fetch...';
+            toast('Đang fetch dữ liệu mới cho tất cả mã...');
+            
+            try {
+                const r = await fetch(API + '/api/data/fetch-all', { method: 'POST' });
+                const d = await r.json();
+                toast(`✓ Fetch thành công! ${d.summary?.success || 0} mã`);
+                
+                // Reload lại dữ liệu
+                await initDates();
+                loadStats();
+                if (document.getElementById('page-market').classList.contains('active')) {
+                    loadMarketTable();
+                }
+            } catch(e) {
+                toast('Lỗi fetch: ' + e.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-cloud-download-alt"></i> Fetch dữ liệu mới';
             }
         }
 
