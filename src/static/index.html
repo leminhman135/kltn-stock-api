@@ -668,11 +668,16 @@
         // Khởi tạo ngày mặc định
         let latestDataDate = null;
         async function initDates() {
+            console.log('📅 initDates...');
             const today = new Date();
             const oneYearAgo = new Date();
             oneYearAgo.setFullYear(today.getFullYear() - 1);
-            document.getElementById('toDate').value = today.toISOString().split('T')[0];
-            document.getElementById('fromDate').value = oneYearAgo.toISOString().split('T')[0];
+            
+            const toDateEl = document.getElementById('toDate');
+            const fromDateEl = document.getElementById('fromDate');
+            
+            if (toDateEl) toDateEl.value = today.toISOString().split('T')[0];
+            if (fromDateEl) fromDateEl.value = oneYearAgo.toISOString().split('T')[0];
             
             // Lấy ngày giao dịch gần nhất từ API
             try {
@@ -685,6 +690,7 @@
                     updateDataStatus(null);
                 }
             } catch(e) {
+                console.log('initDates error:', e);
                 updateDataStatus(null);
             }
         }
