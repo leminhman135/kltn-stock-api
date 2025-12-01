@@ -286,6 +286,7 @@
                         <div class="card-header">
                             <div class="card-title"><i class="fas fa-table"></i> Bảng giá VN30</div>
                             <div style="display:flex;gap:8px;align-items:center;">
+                                <input type="date" id="marketDate" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-primary);color:var(--text-primary);font-size:0.875rem;" title="Chọn ngày xem bảng giá">
                                 <button class="btn btn-primary" onclick="loadMarketTable()"><i class="fas fa-sync"></i> Cập nhật</button>
                             </div>
                         </div>
@@ -591,12 +592,17 @@
 
         async function loadMarketTable() {
             const tbody = document.getElementById('marketTable');
+            const selectedDate = document.getElementById('marketDate')?.value || '';
             tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin"></i> Đang tải bảng giá...</td></tr>';
             
             const rows = [];
             for (const s of stocks.slice(0, 30)) {
                 try {
-                    const r = await fetch(API + `/api/prices/${s.symbol}?limit=2`);
+                    // Nếu có chọn ngày, fetch dữ liệu theo ngày đó
+                    const url = selectedDate 
+                        ? API + `/api/prices/${s.symbol}?date=${selectedDate}&limit=2`
+                        : API + `/api/prices/${s.symbol}?limit=2`;
+                    const r = await fetch(url);
                     if (r.ok) {
                         const data = await r.json();
                         if (data && data.length > 0) {
@@ -675,9 +681,11 @@
             
             const toDateEl = document.getElementById('toDate');
             const fromDateEl = document.getElementById('fromDate');
+            const marketDateEl = document.getElementById('marketDate');
             
             if (toDateEl) toDateEl.value = today.toISOString().split('T')[0];
             if (fromDateEl) fromDateEl.value = oneYearAgo.toISOString().split('T')[0];
+            if (marketDateEl) marketDateEl.value = today.toISOString().split('T')[0];
             
             // Lấy ngày giao dịch gần nhất từ API
             try {
@@ -685,6 +693,7 @@
                 const data = await r.json();
                 if (data && data.length > 0 && data[0].date) {
                     latestDataDate = data[0].date;
+                    if (marketDateEl) marketDateEl.value = data[0].date;
                     updateDataStatus(data[0].date);
                 } else {
                     updateDataStatus(null);
