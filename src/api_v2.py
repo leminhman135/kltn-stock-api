@@ -700,6 +700,86 @@ async def get_available_dates(
     }
 
 
+@app.get("/api/market-board/compare", tags=["Market Board"])
+async def compare_dates(
+    date1: str = Query(..., description="Ngày 1 (YYYY-MM-DD)"),
+    date2: str = Query(..., description="Ngày 2 (YYYY-MM-DD)"),
+    symbol: Optional[str] = Query(None, description="Mã CP cụ thể (optional)"),
+    db: Session = Depends(get_db)
+):
+    """
+    📊 So sánh bảng giá giữa 2 ngày
+    
+    Ví dụ: /api/market-board/compare?date1=2024-11-28&date2=2024-11-29
+    """
+    from datetime import datetime as dt
+    
+    try:
+        d1 = dt.strptime(date1, '%Y-%m-%d').date()
+        d2 = dt.strptime(date2, '%Y-%m-%d').date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Sai định dạng ngày")
+    
+    # Query cho cả 2 ngày
+    query1 = db.query(Stock, StockPrice).join(
+        StockPrice, Stock.id == StockPrice.stock_id
+    ).filter(
+        StockPrice.date == d1,
+        Stock.is_active == True
+    )
+    
+    query2 = db.query(Stock, StockPrice).join(
+        StockPrice, Stock.id == StockPrice.stock_id
+    ).filter(
+        StockPrice.date == d2,
+        Stock.is_active == True
+    )
+    
+    if symbol:
+        query1 = query1.filter(Stock.symbol == symbol.upper())
+        query2 = query2.filter(Stock.symbol == symbol.upper())
+    
+    results1 = {stock.symbol: price for stock, price in query1.all()}
+    results2 = {stock.symbol: price for stock, price in query2.all()}
+    
+    if not results1 or not results2:
+        raise HTTPException(status_code=404, detail="Không có dữ liệu")
+    
+    # Build comparison
+    comparison = []
+    for sym in results1.keys():
+        if sym in results2:
+            p1 = results1[sym]
+            p2 = results2[sym]
+            
+            price_change = p2.close - p1.close
+            price_change_pct = (price_change / p1.close * 100) if p1.close > 0 else 0
+            volume_change = p2.volume - p1.volume
+            volume_change_pct = (volume_change / p1.volume * 100) if p1.volume > 0 else 0
+            
+            comparison.append({
+                "symbol": sym,
+                "date1_close": p1.close,
+                "date2_close": p2.close,
+                "price_change": round(price_change, 2),
+                "price_change_percent": round(price_change_pct, 2),
+                "date1_volume": p1.volume,
+                "date2_volume": p2.volume,
+                "volume_change": volume_change,
+                "volume_change_percent": round(volume_change_pct, 2)
+            })
+    
+    # Sort by price change
+    comparison.sort(key=lambda x: x["price_change_percent"], reverse=True)
+    
+    return {
+        "date1": date1,
+        "date2": date2,
+        "total_stocks": len(comparison),
+        "comparison": comparison
+    }
+
+
 @app.get("/api/market-board/{date}", tags=["Market Board"])
 async def get_market_board_by_date(
     date: str,
@@ -972,86 +1052,6 @@ async def get_top_volume(
         "exchange": exchange or "ALL",
         "total": len(volume_list),
         "top_volume": volume_list[:limit]
-    }
-
-
-@app.get("/api/market-board/compare", tags=["Market Board"])
-async def compare_dates(
-    date1: str = Query(..., description="Ngày 1 (YYYY-MM-DD)"),
-    date2: str = Query(..., description="Ngày 2 (YYYY-MM-DD)"),
-    symbol: Optional[str] = Query(None, description="Mã CP cụ thể (optional)"),
-    db: Session = Depends(get_db)
-):
-    """
-    📊 So sánh bảng giá giữa 2 ngày
-    
-    Ví dụ: /api/market-board/compare?date1=2024-11-28&date2=2024-11-29
-    """
-    from datetime import datetime as dt
-    
-    try:
-        d1 = dt.strptime(date1, '%Y-%m-%d').date()
-        d2 = dt.strptime(date2, '%Y-%m-%d').date()
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Sai định dạng ngày")
-    
-    # Query cho cả 2 ngày
-    query1 = db.query(Stock, StockPrice).join(
-        StockPrice, Stock.id == StockPrice.stock_id
-    ).filter(
-        StockPrice.date == d1,
-        Stock.is_active == True
-    )
-    
-    query2 = db.query(Stock, StockPrice).join(
-        StockPrice, Stock.id == StockPrice.stock_id
-    ).filter(
-        StockPrice.date == d2,
-        Stock.is_active == True
-    )
-    
-    if symbol:
-        query1 = query1.filter(Stock.symbol == symbol.upper())
-        query2 = query2.filter(Stock.symbol == symbol.upper())
-    
-    results1 = {stock.symbol: price for stock, price in query1.all()}
-    results2 = {stock.symbol: price for stock, price in query2.all()}
-    
-    if not results1 or not results2:
-        raise HTTPException(status_code=404, detail="Không có dữ liệu")
-    
-    # Build comparison
-    comparison = []
-    for sym in results1.keys():
-        if sym in results2:
-            p1 = results1[sym]
-            p2 = results2[sym]
-            
-            price_change = p2.close - p1.close
-            price_change_pct = (price_change / p1.close * 100) if p1.close > 0 else 0
-            volume_change = p2.volume - p1.volume
-            volume_change_pct = (volume_change / p1.volume * 100) if p1.volume > 0 else 0
-            
-            comparison.append({
-                "symbol": sym,
-                "date1_close": p1.close,
-                "date2_close": p2.close,
-                "price_change": round(price_change, 2),
-                "price_change_percent": round(price_change_pct, 2),
-                "date1_volume": p1.volume,
-                "date2_volume": p2.volume,
-                "volume_change": volume_change,
-                "volume_change_percent": round(volume_change_pct, 2)
-            })
-    
-    # Sort by price change
-    comparison.sort(key=lambda x: x["price_change_percent"], reverse=True)
-    
-    return {
-        "date1": date1,
-        "date2": date2,
-        "total_stocks": len(comparison),
-        "comparison": comparison
     }
 
 
