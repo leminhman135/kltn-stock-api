@@ -285,8 +285,9 @@
                     <div class="card">
                         <div class="card-header">
                             <div class="card-title"><i class="fas fa-table"></i> Bảng giá VN30</div>
-                            <div style="display:flex;gap:8px;align-items:center;">
-                                <input type="date" id="marketDate" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-primary);color:var(--text-primary);font-size:0.875rem;" title="Chọn ngày xem bảng giá">
+                            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                                <input type="date" id="marketDate" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-primary);color:var(--text-primary);font-size:0.875rem;" title="Chọn ngày xem bảng giá" onchange="loadMarketTable()">
+                                <button class="btn" onclick="clearMarketDate()" style="padding:8px 12px;background:var(--bg-secondary);border:1px solid var(--border);" title="Xem dữ liệu mới nhất"><i class="fas fa-times"></i> Mới nhất</button>
                                 <button class="btn btn-primary" onclick="loadMarketTable()"><i class="fas fa-sync"></i> Cập nhật</button>
                             </div>
                         </div>
@@ -598,24 +599,58 @@
             } catch(e) { console.error(e); }
         }
 
+        function clearMarketDate() {
+            document.getElementById('marketDate').value = '';
+            loadMarketTable();
+        }
+
         async function loadMarketTable() {
             const tbody = document.getElementById('marketTable');
             const selectedDate = document.getElementById('marketDate')?.value || '';
-            tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin"></i> Đang tải bảng giá...</td></tr>';
+            
+            // Hiển thị ngày đang xem
+            const dateDisplay = selectedDate 
+                ? `📅 Dữ liệu ngày: ${new Date(selectedDate).toLocaleDateString('vi-VN')}`
+                : '📅 Dữ liệu mới nhất';
+            
+            tbody.innerHTML = `<tr><td colspan="12" style="text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin"></i> Đang tải bảng giá...<br><small style="color:var(--text-secondary);margin-top:8px;display:block;">${dateDisplay}</small></td></tr>`;
             
             const rows = [];
+            let dataDate = '';
+            
             for (const s of stocks.slice(0, 30)) {
                 try {
                     // Nếu có chọn ngày, fetch dữ liệu theo ngày đó
-                    const url = selectedDate 
-                        ? API + `/api/prices/${s.symbol}?date=${selectedDate}&limit=2`
-                        : API + `/api/prices/${s.symbol}?limit=2`;
+                    let url;
+                    if (selectedDate) {
+                        // Fetch dữ liệu của ngày được chọn và ngày trước đó
+                        url = API + `/api/prices/${s.symbol}?end_date=${selectedDate}&limit=5`;
+                    } else {
+                        url = API + `/api/prices/${s.symbol}?limit=5`;
+                    }
+                    
                     const r = await fetch(url);
                     if (r.ok) {
                         const data = await r.json();
                         if (data && data.length > 0) {
-                            const p = data[data.length - 1]; // Latest price
-                            const prev = data.length > 1 ? data[data.length - 2] : p;
+                            // Tìm dữ liệu của ngày được chọn hoặc ngày gần nhất
+                            let p, prev;
+                            
+                            if (selectedDate) {
+                                // Tìm ngày chính xác hoặc ngày gần nhất <= selectedDate
+                                const filteredData = data.filter(d => d.date <= selectedDate);
+                                if (filteredData.length > 0) {
+                                    p = filteredData[filteredData.length - 1];
+                                    prev = filteredData.length > 1 ? filteredData[filteredData.length - 2] : p;
+                                } else {
+                                    continue; // Không có dữ liệu cho ngày này
+                                }
+                            } else {
+                                p = data[data.length - 1];
+                                prev = data.length > 1 ? data[data.length - 2] : p;
+                            }
+                            
+                            if (!dataDate) dataDate = p.date;
                             
                             // Real data from API
                             const open = p.open;
@@ -661,7 +696,19 @@
                     }
                 } catch(e) { console.error(s.symbol, e); }
             }
-            tbody.innerHTML = rows.length ? rows.join('') : '<tr><td colspan="12" style="text-align:center;color:var(--text-secondary);padding:40px;">Không có dữ liệu</td></tr>';
+            
+            if (rows.length) {
+                tbody.innerHTML = rows.join('');
+                const dateMsg = selectedDate 
+                    ? `Dữ liệu ngày ${new Date(dataDate).toLocaleDateString('vi-VN')}`
+                    : `Dữ liệu mới nhất (${dataDate})`;
+                toast(`✓ Đã tải ${rows.length} cổ phiếu - ${dateMsg}`);
+            } else {
+                const noDataMsg = selectedDate 
+                    ? `Không có dữ liệu cho ngày ${new Date(selectedDate).toLocaleDateString('vi-VN')}. Có thể là ngày nghỉ/cuối tuần.`
+                    : 'Không có dữ liệu';
+                tbody.innerHTML = `<tr><td colspan="12" style="text-align:center;color:var(--text-secondary);padding:40px;">${noDataMsg}<br><small>Thử chọn ngày khác</small></td></tr>`;
+            }
         }
 
         function initChart() {
