@@ -1269,6 +1269,316 @@ async def get_db_status(db: Session = Depends(get_db)):
 # DATA COLLECTION ENDPOINTS - Fetch Real Data from VNDirect
 # =====================================================
 
+@app.post("/api/data/sync-daily", tags=["Data Collection"])
+async def sync_daily_data(
+    db: Session = Depends(get_db)
+):
+    """
+    🔄 Tự động cập nhật dữ liệu MỚI NHẤT cho tất cả cổ phiếu.
+    
+    Endpoint này sẽ:
+    1. Kiểm tra ngày cuối cùng có dữ liệu trong DB
+    2. Fetch dữ liệu từ ngày đó đến hôm nay
+    3. Lưu vào database
+    
+    **Dùng cho:**
+    - Cron job hàng ngày (Render Cron, n8n, etc.)
+    - Đảm bảo dữ liệu luôn cập nhật liên tục
+    
+    **Ví dụ:**
+    - DB có dữ liệu đến 28/11 → Sync sẽ fetch từ 28/11 đến hôm nay (1/12)
+    """
+    from src.data_collection import VNDirectAPI
+    import time
+    
+    stocks = db.query(Stock).filter(Stock.is_active == True).all()
+    
+    if not stocks:
+        raise HTTPException(
+            status_code=404,
+            detail="No stocks in database. Use /api/admin/init-db first."
+        )
+    
+    vndirect = VNDirectAPI()
+    today = datetime.now()
+    results = []
+    total_new_records = 0
+    
+    for stock in stocks:
+        try:
+            # Tìm ngày cuối cùng có dữ liệu trong DB
+            last_price = db.query(StockPrice).filter(
+                StockPrice.stock_id == stock.id
+            ).order_by(desc(StockPrice.date)).first()
+            
+            if last_price:
+                # Có dữ liệu → fetch từ ngày cuối + 1
+                start_date = datetime.combine(last_price.date, datetime.min.time()) + timedelta(days=1)
+            else:
+                # Chưa có dữ liệu → fetch 30 ngày gần nhất
+                start_date = today - timedelta(days=30)
+            
+            # Nếu ngày bắt đầu >= hôm nay thì skip (đã có dữ liệu mới nhất)
+            if start_date.date() >= today.date():
+                results.append({
+                    "symbol": stock.symbol,
+                    "status": "up_to_date",
+                    "last_date": last_price.date.isoformat() if last_price else None,
+                    "new_records": 0
+                })
+                continue
+            
+            # Fetch dữ liệu
+            df = vndirect.get_stock_price(
+                symbol=stock.symbol,
+                from_date=start_date.strftime('%Y-%m-%d'),
+                to_date=today.strftime('%Y-%m-%d')
+            )
+            
+            if df.empty:
+                results.append({
+                    "symbol": stock.symbol,
+                    "status": "no_new_data",
+                    "last_date": last_price.date.isoformat() if last_price else None,
+                    "new_records": 0
+                })
+                continue
+            
+            # Lưu vào database
+            new_records = 0
+            for _, row in df.iterrows():
+                # Skip nếu đã tồn tại
+                existing = db.query(StockPrice).filter(
+                    StockPrice.stock_id == stock.id,
+                    StockPrice.date == row['date'].date()
+                ).first()
+                
+                if not existing:
+                    price = StockPrice(
+                        stock_id=stock.id,
+                        date=row['date'].date(),
+                        open=float(row['Open']),
+                        high=float(row['High']),
+                        low=float(row['Low']),
+                        close=float(row['Close']),
+                        volume=float(row['Volume']),
+                        source="vndirect"
+                    )
+                    db.add(price)
+                    new_records += 1
+            
+            db.commit()
+            total_new_records += new_records
+            
+            results.append({
+                "symbol": stock.symbol,
+                "status": "synced",
+                "last_date": df['date'].max().strftime('%Y-%m-%d'),
+                "new_records": new_records
+            })
+            
+            # Rate limiting
+            time.sleep(0.3)
+            
+        except Exception as e:
+            logger.error(f"Error syncing {stock.symbol}: {str(e)}")
+            results.append({
+                "symbol": stock.symbol,
+                "status": "error",
+                "error": str(e)
+            })
+    
+    return {
+        "status": "completed",
+        "timestamp": today.isoformat(),
+        "summary": {
+            "total_stocks": len(stocks),
+            "synced": len([r for r in results if r["status"] == "synced"]),
+            "up_to_date": len([r for r in results if r["status"] == "up_to_date"]),
+            "errors": len([r for r in results if r["status"] == "error"]),
+            "total_new_records": total_new_records
+        },
+        "results": results
+    }
+
+
+@app.post("/api/data/sync/{symbol}", tags=["Data Collection"])
+async def sync_stock_data(
+    symbol: str,
+    db: Session = Depends(get_db)
+):
+    """
+    🔄 Tự động cập nhật dữ liệu MỚI NHẤT cho MỘT cổ phiếu.
+    
+    - Kiểm tra ngày cuối trong DB
+    - Fetch từ ngày đó đến hôm nay
+    - Lưu dữ liệu mới
+    
+    **Ví dụ:** VNM có dữ liệu đến 28/11 → Sync sẽ fetch 29/11, 30/11, 1/12
+    """
+    from src.data_collection import VNDirectAPI
+    
+    stock = db.query(Stock).filter(Stock.symbol == symbol.upper()).first()
+    if not stock:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Stock {symbol} not found. Use /api/admin/init-db first."
+        )
+    
+    vndirect = VNDirectAPI()
+    today = datetime.now()
+    
+    # Tìm ngày cuối cùng có dữ liệu
+    last_price = db.query(StockPrice).filter(
+        StockPrice.stock_id == stock.id
+    ).order_by(desc(StockPrice.date)).first()
+    
+    if last_price:
+        start_date = datetime.combine(last_price.date, datetime.min.time()) + timedelta(days=1)
+        last_date_str = last_price.date.isoformat()
+    else:
+        start_date = today - timedelta(days=365)  # Fetch 1 năm nếu chưa có dữ liệu
+        last_date_str = None
+    
+    # Nếu đã có dữ liệu mới nhất
+    if start_date.date() >= today.date():
+        return {
+            "status": "up_to_date",
+            "symbol": symbol.upper(),
+            "message": f"Data is already up to date (last: {last_date_str})",
+            "last_date": last_date_str,
+            "new_records": 0
+        }
+    
+    try:
+        # Fetch dữ liệu mới
+        df = vndirect.get_stock_price(
+            symbol=symbol.upper(),
+            from_date=start_date.strftime('%Y-%m-%d'),
+            to_date=today.strftime('%Y-%m-%d')
+        )
+        
+        if df.empty:
+            return {
+                "status": "no_new_data",
+                "symbol": symbol.upper(),
+                "message": "No new data available from VNDirect",
+                "last_date": last_date_str,
+                "new_records": 0
+            }
+        
+        # Lưu vào database
+        new_records = 0
+        for _, row in df.iterrows():
+            existing = db.query(StockPrice).filter(
+                StockPrice.stock_id == stock.id,
+                StockPrice.date == row['date'].date()
+            ).first()
+            
+            if not existing:
+                price = StockPrice(
+                    stock_id=stock.id,
+                    date=row['date'].date(),
+                    open=float(row['Open']),
+                    high=float(row['High']),
+                    low=float(row['Low']),
+                    close=float(row['Close']),
+                    volume=float(row['Volume']),
+                    source="vndirect"
+                )
+                db.add(price)
+                new_records += 1
+        
+        db.commit()
+        
+        return {
+            "status": "synced",
+            "symbol": symbol.upper(),
+            "message": f"Successfully synced {new_records} new records",
+            "previous_last_date": last_date_str,
+            "new_last_date": df['date'].max().strftime('%Y-%m-%d'),
+            "new_records": new_records,
+            "date_range": {
+                "from": df['date'].min().strftime('%Y-%m-%d'),
+                "to": df['date'].max().strftime('%Y-%m-%d')
+            }
+        }
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error syncing {symbol}: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/data/status", tags=["Data Collection"])
+async def get_data_status(db: Session = Depends(get_db)):
+    """
+    📊 Kiểm tra trạng thái dữ liệu của tất cả cổ phiếu.
+    
+    Hiển thị:
+    - Ngày đầu tiên và cuối cùng có dữ liệu
+    - Số ngày dữ liệu
+    - Có cần sync không
+    """
+    stocks = db.query(Stock).filter(Stock.is_active == True).all()
+    today = datetime.now().date()
+    
+    results = []
+    needs_sync_count = 0
+    
+    for stock in stocks:
+        # Lấy ngày đầu và cuối
+        first_price = db.query(StockPrice).filter(
+            StockPrice.stock_id == stock.id
+        ).order_by(StockPrice.date).first()
+        
+        last_price = db.query(StockPrice).filter(
+            StockPrice.stock_id == stock.id
+        ).order_by(desc(StockPrice.date)).first()
+        
+        # Đếm số records
+        total_records = db.query(func.count(StockPrice.id)).filter(
+            StockPrice.stock_id == stock.id
+        ).scalar()
+        
+        # Kiểm tra cần sync không
+        needs_sync = False
+        days_behind = 0
+        if last_price:
+            days_behind = (today - last_price.date).days
+            needs_sync = days_behind > 1  # Cần sync nếu thiếu > 1 ngày
+        else:
+            needs_sync = True
+            days_behind = -1  # Không có dữ liệu
+        
+        if needs_sync:
+            needs_sync_count += 1
+        
+        results.append({
+            "symbol": stock.symbol,
+            "first_date": first_price.date.isoformat() if first_price else None,
+            "last_date": last_price.date.isoformat() if last_price else None,
+            "total_records": total_records,
+            "days_behind": days_behind,
+            "needs_sync": needs_sync
+        })
+    
+    # Sort by days_behind (những mã cần sync nhất lên trước)
+    results.sort(key=lambda x: x["days_behind"], reverse=True)
+    
+    return {
+        "status": "ok",
+        "timestamp": datetime.now().isoformat(),
+        "today": today.isoformat(),
+        "summary": {
+            "total_stocks": len(stocks),
+            "needs_sync": needs_sync_count,
+            "up_to_date": len(stocks) - needs_sync_count
+        },
+        "stocks": results
+    }
+
+
 @app.post("/api/data/fetch/{symbol}", tags=["Data Collection"])
 async def fetch_stock_data(
     symbol: str,
