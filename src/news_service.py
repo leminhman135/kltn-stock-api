@@ -122,17 +122,24 @@ class SentimentAnalyzer:
 class NewsService:
     """Service thu thập tin tức THẬT từ nhiều nguồn RSS và Web"""
     
-    # RSS Feeds chứng khoán Việt Nam
+    # RSS Feeds chứng khoán Việt Nam - Nguồn uy tín
     RSS_FEEDS = {
+        # Báo tài chính chuyên ngành
         "CafeF": "https://cafef.vn/rss/chung-khoan.rss",
         "CafeF_DN": "https://cafef.vn/rss/doanh-nghiep.rss",
         "CafeF_TaiChinh": "https://cafef.vn/rss/tai-chinh-ngan-hang.rss",
         "VnEconomy": "https://vneconomy.vn/chung-khoan.rss",
-        "ThanhNien": "https://thanhnien.vn/rss/tai-chinh-kinh-doanh.rss",
-        "TuoiTre": "https://tuoitre.vn/rss/kinh-doanh.rss",
-        "VTV": "https://vtv.vn/trong-nuoc.rss",
-        "NguoiLaoDong": "https://nld.com.vn/kinh-te.rss",
-        "DanTri": "https://dantri.com.vn/rss/kinh-doanh.rss",
+        "VnEconomy_DN": "https://vneconomy.vn/doanh-nghiep.rss",
+        "TBKTSG": "https://thesaigontimes.vn/rss/chung-khoan.rss",  # Thời báo Kinh tế Sài Gòn
+        
+        # Báo chính thống
+        "VTV_KinhTe": "https://vtv.vn/kinh-te.rss",
+        "VietnamNet_KinhTe": "https://vietnamnet.vn/rss/kinh-doanh.rss",
+        "ThanhNien_TaiChinh": "https://thanhnien.vn/rss/tai-chinh-kinh-doanh.rss",
+        "TuoiTre_KinhDoanh": "https://tuoitre.vn/rss/kinh-doanh.rss",
+        
+        # Thông tấn xã
+        "TTXVN": "https://bnews.vn/rss/chung-khoan.rss",  # Thông tấn xã VN - BNews
     }
     
     # Mapping mã CK -> từ khóa
