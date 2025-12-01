@@ -26,8 +26,23 @@
         
         /* Layout */
         .app { display: flex; min-height: 100vh; }
-        .sidebar { width: 280px; background: var(--bg-secondary); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+        .sidebar { width: 220px; background: var(--bg-secondary); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
         .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        
+        /* Stock Grid in Dashboard */
+        .stock-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-bottom: 24px; }
+        .stock-card { background: var(--bg-card); border-radius: 10px; padding: 14px; border: 1px solid var(--border); cursor: pointer; transition: all 0.2s; }
+        .stock-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+        .stock-card.active { border-color: var(--accent); background: rgba(59, 130, 246, 0.1); }
+        .stock-card .symbol { font-weight: 700; font-size: 1rem; margin-bottom: 4px; }
+        .stock-card .name { font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .stock-card .price { font-size: 0.95rem; font-weight: 600; color: var(--success); }
+        .stock-card .price.down { color: var(--danger); }
+        .stock-card .change { font-size: 0.75rem; margin-top: 4px; }
+        @media (max-width: 1400px) { .stock-grid { grid-template-columns: repeat(5, 1fr); } }
+        @media (max-width: 1200px) { .stock-grid { grid-template-columns: repeat(4, 1fr); } }
+        @media (max-width: 900px) { .stock-grid { grid-template-columns: repeat(3, 1fr); } }
+        @media (max-width: 600px) { .stock-grid { grid-template-columns: repeat(2, 1fr); } }
         
         /* Sidebar */
         .logo { padding: 20px; border-bottom: 1px solid var(--border); }
@@ -173,10 +188,6 @@
                 <div class="nav-item" data-page="models"><i class="fas fa-brain"></i> Mô hình ML</div>
                 <div class="nav-item" data-page="predict"><i class="fas fa-magic"></i> Dự đoán</div>
             </nav>
-            <div class="stock-search">
-                <input type="text" placeholder="🔍 Tìm mã CK..." id="searchInput">
-            </div>
-            <div class="stock-list" id="stockList"></div>
         </aside>
 
         <!-- Main -->
@@ -212,6 +223,19 @@
 
                 <!-- Dashboard -->
                 <div class="tab-content active" id="page-dashboard">
+                    <!-- Stock Search & Grid -->
+                    <div class="card" style="margin-bottom:24px;">
+                        <div class="card-header">
+                            <div class="card-title"><i class="fas fa-list"></i> Danh sách 30 mã cổ phiếu VN30</div>
+                            <div style="display:flex;gap:12px;align-items:center;">
+                                <input type="text" placeholder="🔍 Tìm mã CK..." id="searchInput" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg-primary);color:var(--text-primary);font-size:0.875rem;width:200px;">
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="stock-grid" id="stockGrid">Đang tải...</div>
+                        </div>
+                    </div>
+
                     <div class="stats-grid">
                         <div class="stat-card"><div class="icon blue"><i class="fas fa-building"></i></div><div class="label">Tổng mã CK</div><div class="value" id="statStocks">--</div></div>
                         <div class="stat-card"><div class="icon green"><i class="fas fa-database"></i></div><div class="label">Dữ liệu giá</div><div class="value" id="statPrices">--</div></div>
@@ -452,7 +476,14 @@
         }
 
         function renderStocks(list) {
-            document.getElementById('stockList').innerHTML = list.map(s => `<div class="stock-item ${s.symbol===currentSymbol?'active':''}" onclick="selectStock('${s.symbol}')"><div class="symbol">${s.symbol}</div><div class="price" id="p-${s.symbol}">--</div></div>`).join('');
+            document.getElementById('stockGrid').innerHTML = list.map(s => `
+                <div class="stock-card ${s.symbol===currentSymbol?'active':''}" onclick="selectStock('${s.symbol}')">
+                    <div class="symbol">${s.symbol}</div>
+                    <div class="name">${(s.name || '').substring(0,20)}</div>
+                    <div class="price" id="p-${s.symbol}">--</div>
+                    <div class="change" id="c-${s.symbol}">--</div>
+                </div>
+            `).join('');
         }
 
         function populatePredSelect() {
@@ -464,7 +495,7 @@
         async function selectStock(symbol) {
             if (!symbol) return;
             currentSymbol = symbol;
-            document.querySelectorAll('.stock-item').forEach(el => el.classList.toggle('active', el.querySelector('.symbol')?.textContent === symbol));
+            document.querySelectorAll('.stock-card').forEach(el => el.classList.toggle('active', el.querySelector('.symbol')?.textContent === symbol));
             document.getElementById('chartSymbolSelect').value = symbol;
             await loadPrices(symbol, days);
         }
@@ -485,7 +516,14 @@
                 const change = ((l.close - l.open) / l.open * 100).toFixed(2);
                 document.getElementById('infoChange').innerHTML = `<span class="${change>=0?'up':'down'}">${change>=0?'+':''}${change}%</span>`;
                 const pe = document.getElementById('p-' + symbol);
-                if (pe) pe.textContent = fmtPrice(l.close);
+                if (pe) {
+                    pe.textContent = fmtPrice(l.close);
+                    pe.className = 'price ' + (change >= 0 ? '' : 'down');
+                }
+                const ce = document.getElementById('c-' + symbol);
+                if (ce) {
+                    ce.innerHTML = `<span class="${change>=0?'up':'down'}">${change>=0?'▲':'▼'} ${Math.abs(change)}%</span>`;
+                }
             } catch(e) { console.error(e); }
         }
 
