@@ -838,14 +838,14 @@
                 let score = 0;
                 const reasons = [];
                 
-                // Factor 1: Sentiment from news
+                // Factor 1: Sentiment from news (giảm ảnh hưởng)
                 if (sentimentData?.sentiment_summary) {
                     const sent = sentimentData.sentiment_summary;
                     if (sent.overall === 'positive') {
-                        score += 2;
+                        score += 0.8;  // Giảm từ 2 xuống 0.8
                         reasons.push({ type: 'positive', icon: '📰', text: `Tin tức tích cực (${sent.positive_count} tin tốt)`, detail: sent.recommendation });
                     } else if (sent.overall === 'negative') {
-                        score -= 2;
+                        score -= 1.2;  // Giữ tin tiêu cực mạnh hơn (thận trọng)
                         reasons.push({ type: 'negative', icon: '📰', text: `Tin tức tiêu cực (${sent.negative_count} tin xấu)`, detail: sent.recommendation });
                     } else {
                         reasons.push({ type: 'neutral', icon: '📰', text: 'Tin tức trung lập', detail: 'Không có tín hiệu rõ ràng từ tin tức' });
