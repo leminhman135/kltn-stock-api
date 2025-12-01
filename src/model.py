@@ -334,8 +334,8 @@ class StockMLModel:
                     weights = []
                     for name, model in self.models.items():
                         pred_return = model.predict(feature_scaled)[0]
-                        # Clip extreme predictions
-                        pred_return = np.clip(pred_return, -0.05, 0.05)
+                        # Clip extreme predictions - much tighter bounds
+                        pred_return = np.clip(pred_return, -0.015, 0.015)  # Max 1.5% per day
                         acc = self.metrics.get(name, {}).get('accuracy', 50)
                         pred_returns.append(pred_return)
                         weights.append(max(acc - 45, 1))  # Weight by excess accuracy over random
@@ -346,40 +346,49 @@ class StockMLModel:
                         weighted_return = np.mean(pred_returns)
                 elif model_type in self.models:
                     weighted_return = self.models[model_type].predict(feature_scaled)[0]
-                    weighted_return = np.clip(weighted_return, -0.05, 0.05)
+                    weighted_return = np.clip(weighted_return, -0.015, 0.015)
                 else:
                     weighted_return = 0.0
                 
-                # Apply mean reversion pressure
+                # Apply mean reversion pressure - STRONGER
                 # If price is far above SMA20, reduce upward predictions
                 price_vs_sma = (current_price - sma20) / sma20
                 mean_reversion_factor = 1.0
                 
-                if price_vs_sma > 0.05 and weighted_return > 0:  # Price 5%+ above SMA, predicting up
-                    mean_reversion_factor = max(0.3, 1 - price_vs_sma * 2)
-                elif price_vs_sma < -0.05 and weighted_return < 0:  # Price 5%+ below SMA, predicting down
-                    mean_reversion_factor = max(0.3, 1 + price_vs_sma * 2)
+                if price_vs_sma > 0.02 and weighted_return > 0:  # Price 2%+ above SMA, predicting up
+                    mean_reversion_factor = max(0.1, 1 - abs(price_vs_sma) * 5)
+                elif price_vs_sma < -0.02 and weighted_return < 0:  # Price 2%+ below SMA, predicting down
+                    mean_reversion_factor = max(0.1, 1 - abs(price_vs_sma) * 5)
                 
-                # Apply RSI-based adjustment (overbought/oversold)
+                # Strong mean reversion: pull back toward SMA
+                if abs(price_vs_sma) > 0.03:
+                    # Add mean reversion component
+                    reversion_pull = -price_vs_sma * 0.15  # Pull 15% of the gap per day
+                    weighted_return = weighted_return * 0.5 + reversion_pull * 0.5
+                
+                # Apply RSI-based adjustment (overbought/oversold) - STRONGER
                 rsi_adjustment = 1.0
-                if current_rsi > 70 and weighted_return > 0:  # Overbought, reduce upward
-                    rsi_adjustment = 0.5
-                elif current_rsi < 30 and weighted_return < 0:  # Oversold, reduce downward
-                    rsi_adjustment = 0.5
+                if current_rsi > 65 and weighted_return > 0:  # Overbought, reduce upward
+                    rsi_adjustment = max(0.2, 1 - (current_rsi - 50) / 100)
+                elif current_rsi < 35 and weighted_return < 0:  # Oversold, reduce downward
+                    rsi_adjustment = max(0.2, 1 - (50 - current_rsi) / 100)
                 
-                # Apply Bollinger adjustment
+                # Apply Bollinger adjustment - STRONGER
                 bb_adjustment = 1.0
-                if current_bb > 0.8 and weighted_return > 0:  # Near upper band
-                    bb_adjustment = 0.6
-                elif current_bb < -0.8 and weighted_return < 0:  # Near lower band
-                    bb_adjustment = 0.6
+                if current_bb > 0.5 and weighted_return > 0:  # Near upper band
+                    bb_adjustment = max(0.3, 1 - current_bb)
+                elif current_bb < -0.5 and weighted_return < 0:  # Near lower band
+                    bb_adjustment = max(0.3, 1 + current_bb)
                 
                 # Final adjusted return
                 adjusted_return = weighted_return * mean_reversion_factor * rsi_adjustment * bb_adjustment
                 
                 # Add decay for longer predictions (less confident further out)
-                decay = 0.9 ** step
+                decay = 0.7 ** step  # Stronger decay
                 adjusted_return *= decay
+                
+                # Final clip - max 1% move per day after all adjustments
+                adjusted_return = np.clip(adjusted_return, -0.01, 0.01)
                 
                 next_price = current_price * (1 + adjusted_return)
                 predictions.append(round(float(next_price), 2))
@@ -552,34 +561,35 @@ def quick_predict(prices: list, steps: int = 7) -> dict:
     current_price = last_price
     
     for i in range(steps):
-        # Base prediction from trend
-        trend_component = short_trend * (0.7 ** i)  # Decay trend influence
+        # Base prediction from trend - much weaker
+        trend_component = short_trend * (0.5 ** i) * 0.3  # Weak trend, strong decay
         
-        # Mean reversion component (pull toward SMA20)
-        mean_reversion = (sma20 - current_price) / current_price * 0.1 * (i + 1)
+        # Mean reversion component (pull toward SMA20) - this is key
+        price_vs_sma = (current_price - sma20) / sma20
+        mean_reversion = -price_vs_sma * 0.1  # Pull 10% of gap toward SMA
         
-        # RSI adjustment
+        # RSI adjustment - stronger
         rsi_adj = 0
-        if rsi > 70:  # Overbought - expect pullback
-            rsi_adj = -0.005 * (rsi - 70) / 30
-        elif rsi < 30:  # Oversold - expect bounce
-            rsi_adj = 0.005 * (30 - rsi) / 30
+        if rsi > 60:  # Overbought - expect pullback
+            rsi_adj = -0.003 * (rsi - 50) / 50
+        elif rsi < 40:  # Oversold - expect bounce
+            rsi_adj = 0.003 * (50 - rsi) / 50
         
         # Position adjustment (if near high, less likely to go higher)
         position_adj = 0
-        if price_position > 0.8:  # Near highs
-            position_adj = -0.003 * (price_position - 0.5)
-        elif price_position < 0.2:  # Near lows
-            position_adj = 0.003 * (0.5 - price_position)
+        if price_position > 0.7:  # Near highs
+            position_adj = -0.002 * (price_position - 0.5)
+        elif price_position < 0.3:  # Near lows
+            position_adj = 0.002 * (0.5 - price_position)
         
         # Combine all factors
         expected_return = trend_component + mean_reversion + rsi_adj + position_adj
         
-        # Add uncertainty (random walk component)
-        random_component = np.random.normal(0, volatility * 0.3)
+        # Add small random noise
+        random_component = np.random.normal(0, volatility * 0.1)
         
-        # Clip extreme moves
-        total_return = np.clip(expected_return + random_component, -0.03, 0.03)
+        # Clip extreme moves - max 1% per day
+        total_return = np.clip(expected_return + random_component, -0.01, 0.01)
         
         next_price = current_price * (1 + total_return)
         predictions.append(round(float(next_price), 2))
