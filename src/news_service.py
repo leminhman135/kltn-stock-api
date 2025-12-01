@@ -130,7 +130,7 @@ class NewsService:
         "CafeF_TaiChinh": "https://cafef.vn/rss/tai-chinh-ngan-hang.rss",
         "VnEconomy": "https://vneconomy.vn/chung-khoan.rss",
         "VnEconomy_DN": "https://vneconomy.vn/doanh-nghiep.rss",
-        "TBKTSG": "https://thesaigontimes.vn/rss/chung-khoan.rss",  # Thời báo Kinh tế Sài Gòn
+        # "TBKTSG": "https://thesaigontimes.vn/rss/chung-khoan.rss",  # Tạm tắt - lỗi XML
         
         # Báo chính thống
         "VTV_KinhTe": "https://vtv.vn/kinh-te.rss",
@@ -139,7 +139,7 @@ class NewsService:
         "TuoiTre_KinhDoanh": "https://tuoitre.vn/rss/kinh-doanh.rss",
         
         # Thông tấn xã
-        "TTXVN": "https://bnews.vn/rss/chung-khoan.rss",  # Thông tấn xã VN - BNews
+        # "TTXVN": "https://bnews.vn/rss/chung-khoan.rss",  # Tạm tắt - lỗi SSL
     }
     
     # Mapping mã CK -> từ khóa
