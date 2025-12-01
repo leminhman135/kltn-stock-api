@@ -391,13 +391,22 @@ class StockMLModel:
                 adjusted_return = np.clip(adjusted_return, -0.01, 0.01)
                 
                 next_price = current_price * (1 + adjusted_return)
+                
+                # HARD LIMIT: Giới hạn tổng mức thay đổi tối đa ±15% so với giá gốc
+                max_total_change = 0.15  # 15%
+                max_price = last_price * (1 + max_total_change)
+                min_price = last_price * (1 - max_total_change)
+                next_price = np.clip(next_price, min_price, max_price)
+                
                 predictions.append(round(float(next_price), 2))
                 
                 # Calculate prediction range (confidence interval)
                 uncertainty = daily_vol * np.sqrt(step + 1) * current_price * 1.96  # 95% CI
+                pred_low = max(min_price, next_price - uncertainty)
+                pred_high = min(max_price, next_price + uncertainty)
                 prediction_ranges.append({
-                    'low': round(next_price - uncertainty, 2),
-                    'high': round(next_price + uncertainty, 2)
+                    'low': round(pred_low, 2),
+                    'high': round(pred_high, 2)
                 })
                 
                 current_price = next_price
@@ -560,6 +569,11 @@ def quick_predict(prices: list, steps: int = 7) -> dict:
     predictions = []
     current_price = last_price
     
+    # HARD LIMIT: Maximum total change ±15%
+    max_total_change = 0.15
+    max_price = last_price * (1 + max_total_change)
+    min_price = last_price * (1 - max_total_change)
+    
     for i in range(steps):
         # Base prediction from trend - much weaker
         trend_component = short_trend * (0.5 ** i) * 0.3  # Weak trend, strong decay
@@ -592,6 +606,10 @@ def quick_predict(prices: list, steps: int = 7) -> dict:
         total_return = np.clip(expected_return + random_component, -0.01, 0.01)
         
         next_price = current_price * (1 + total_return)
+        
+        # Enforce hard limit ±15% from original price
+        next_price = np.clip(next_price, min_price, max_price)
+        
         predictions.append(round(float(next_price), 2))
         current_price = next_price
     

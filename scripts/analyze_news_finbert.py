@@ -306,12 +306,30 @@ class DatabaseManager:
 class NewsFetcher:
     """Fetch news from RSS feeds"""
     
-    # Vietnamese stock news RSS feeds
+    # Vietnamese stock news RSS feeds - Expanded list
     RSS_FEEDS = {
-        'cafef': 'https://cafef.vn/rss/thi-truong-chung-khoan.rss',
+        # CafeF
+        'cafef_ck': 'https://cafef.vn/rss/thi-truong-chung-khoan.rss',
+        'cafef_dn': 'https://cafef.vn/rss/doanh-nghiep.rss',
+        'cafef_vimo': 'https://cafef.vn/rss/vi-mo-dau-tu.rss',
+        # VnEconomy
         'vneconomy': 'https://vneconomy.vn/chung-khoan.rss',
-        'vietstock': 'https://finance.vietstock.vn/rss/tin-noi-bat.rss',
+        'vneconomy_dn': 'https://vneconomy.vn/doanh-nghiep.rss',
+        # VnExpress
+        'vnexpress_kd': 'https://vnexpress.net/rss/kinh-doanh.rss',
+        'vnexpress_ck': 'https://vnexpress.net/rss/chung-khoan.rss',
+        # Thanh Nien
+        'thanhnien': 'https://thanhnien.vn/rss/tai-chinh-kinh-doanh.rss',
+        # Tuoi Tre
+        'tuoitre': 'https://tuoitre.vn/rss/kinh-doanh.rss',
+        # Dan Tri
+        'dantri': 'https://dantri.com.vn/rss/kinh-doanh.rss',
+        # NDH
         'ndh': 'https://ndh.vn/rss/chung-khoan-1045.rss',
+        # Vietstock
+        'vietstock': 'https://finance.vietstock.vn/rss/tin-noi-bat.rss',
+        # 24h
+        '24h': 'https://cdn.24h.com.vn/upload/rss/taichinh.rss',
     }
     
     # VN30 stock symbols
