@@ -3389,6 +3389,324 @@ async def compare_stocks_in_industry(symbols: List[str]):
     }
 
 
+# =====================================================
+# FINBERT SENTIMENT ENDPOINTS (Pre-computed offline)
+# =====================================================
+
+@app.get("/api/finbert/sentiment/{symbol}", tags=["FinBERT Sentiment"])
+async def get_finbert_sentiment(
+    symbol: str,
+    days: int = Query(7, description="Số ngày gần đây"),
+    db: Session = Depends(get_db)
+):
+    """
+    🤖 Lấy kết quả phân tích FinBERT sentiment đã tính toán offline
+    
+    Dữ liệu này được tính toán trước bằng script offline và lưu vào DB.
+    Chạy script: python scripts/analyze_news_finbert.py
+    
+    Returns:
+    - Sentiment summary: Overall sentiment, avg score
+    - Recent news: List of analyzed news with FinBERT scores
+    """
+    from sqlalchemy import text
+    
+    clean_symbol = symbol.upper().replace('.VN', '')
+    
+    try:
+        # Check if analyzed_news table exists
+        check_table = text("""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_name = 'analyzed_news'
+            )
+        """)
+        result = db.execute(check_table).scalar()
+        
+        if not result:
+            return {
+                "status": "not_available",
+                "symbol": clean_symbol,
+                "message": "FinBERT analysis not available. Run offline script first.",
+                "hint": "python scripts/analyze_news_finbert.py --symbols " + clean_symbol
+            }
+        
+        # Get sentiment summary
+        summary_query = text("""
+            SELECT * FROM sentiment_summary 
+            WHERE symbol = :symbol 
+            ORDER BY date DESC 
+            LIMIT :days
+        """)
+        summary_result = db.execute(summary_query, {"symbol": clean_symbol, "days": days}).fetchall()
+        
+        # Get recent analyzed news
+        news_query = text("""
+            SELECT title, summary, url, source, published_at, 
+                   sentiment, sentiment_score, positive_score, negative_score, neutral_score
+            FROM analyzed_news 
+            WHERE symbol = :symbol 
+            ORDER BY published_at DESC 
+            LIMIT 20
+        """)
+        news_result = db.execute(news_query, {"symbol": clean_symbol}).fetchall()
+        
+        if not summary_result and not news_result:
+            return {
+                "status": "no_data",
+                "symbol": clean_symbol,
+                "message": f"No FinBERT data for {clean_symbol}. Run analysis script.",
+                "hint": "python scripts/analyze_news_finbert.py --symbols " + clean_symbol
+            }
+        
+        # Calculate overall sentiment
+        if summary_result:
+            total_positive = sum(row[3] for row in summary_result)  # positive_count
+            total_negative = sum(row[4] for row in summary_result)  # negative_count
+            total_neutral = sum(row[5] for row in summary_result)   # neutral_count
+            avg_score = sum(row[6] for row in summary_result) / len(summary_result)  # avg_score
+            
+            if avg_score > 0.3:
+                overall = "positive"
+                recommendation = "📈 Tâm lý thị trường tích cực, có thể xem xét mua"
+            elif avg_score < -0.3:
+                overall = "negative"
+                recommendation = "📉 Tâm lý thị trường tiêu cực, nên thận trọng"
+            else:
+                overall = "neutral"
+                recommendation = "⚖️ Tâm lý trung lập, theo dõi thêm diễn biến"
+        else:
+            total_positive = total_negative = total_neutral = 0
+            avg_score = 0
+            overall = "unknown"
+            recommendation = "Chưa đủ dữ liệu"
+        
+        return {
+            "status": "ok",
+            "symbol": clean_symbol,
+            "model": "ProsusAI/finbert",
+            "analysis_type": "pre_computed_offline",
+            "sentiment_summary": {
+                "overall": overall,
+                "avg_score": round(avg_score, 3),
+                "positive_count": total_positive,
+                "negative_count": total_negative,
+                "neutral_count": total_neutral,
+                "total_news": total_positive + total_negative + total_neutral,
+                "recommendation": recommendation
+            },
+            "daily_summary": [
+                {
+                    "date": str(row[2]),  # date
+                    "positive": row[3],
+                    "negative": row[4],
+                    "neutral": row[5],
+                    "avg_score": round(row[6], 3),
+                    "overall": row[7],
+                    "news_count": row[8]
+                }
+                for row in summary_result
+            ],
+            "recent_news": [
+                {
+                    "title": row[0],
+                    "summary": row[1][:200] + "..." if row[1] and len(row[1]) > 200 else row[1],
+                    "url": row[2],
+                    "source": row[3],
+                    "published_at": str(row[4]),
+                    "sentiment": row[5],
+                    "sentiment_score": round(row[6], 3),
+                    "scores": {
+                        "positive": round(row[7], 3),
+                        "negative": round(row[8], 3),
+                        "neutral": round(row[9], 3)
+                    }
+                }
+                for row in news_result
+            ]
+        }
+        
+    except Exception as e:
+        logger.error(f"FinBERT query error: {e}")
+        return {
+            "status": "error",
+            "symbol": clean_symbol,
+            "message": str(e),
+            "hint": "Ensure offline analysis has been run"
+        }
+
+
+@app.get("/api/finbert/summary", tags=["FinBERT Sentiment"])
+async def get_finbert_market_summary(
+    db: Session = Depends(get_db)
+):
+    """
+    📊 Tổng hợp FinBERT sentiment cho toàn thị trường
+    
+    Lấy sentiment tổng hợp của tất cả các mã đã phân tích.
+    """
+    from sqlalchemy import text
+    
+    try:
+        # Check if table exists
+        check_table = text("""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_name = 'sentiment_summary'
+            )
+        """)
+        result = db.execute(check_table).scalar()
+        
+        if not result:
+            return {
+                "status": "not_available",
+                "message": "FinBERT analysis tables not created yet",
+                "hint": "Run: python scripts/analyze_news_finbert.py"
+            }
+        
+        # Get latest summary for each symbol
+        query = text("""
+            SELECT DISTINCT ON (symbol) 
+                symbol, date, positive_count, negative_count, neutral_count, 
+                avg_score, overall_sentiment, news_count
+            FROM sentiment_summary
+            ORDER BY symbol, date DESC
+        """)
+        results = db.execute(query).fetchall()
+        
+        if not results:
+            return {
+                "status": "no_data",
+                "message": "No FinBERT data available",
+                "hint": "Run offline analysis script"
+            }
+        
+        # Calculate market-wide metrics
+        total_positive = sum(row[2] for row in results)
+        total_negative = sum(row[3] for row in results)
+        total_neutral = sum(row[4] for row in results)
+        avg_market_score = sum(row[5] for row in results) / len(results)
+        
+        positive_stocks = sum(1 for row in results if row[6] == 'positive')
+        negative_stocks = sum(1 for row in results if row[6] == 'negative')
+        neutral_stocks = sum(1 for row in results if row[6] == 'neutral')
+        
+        return {
+            "status": "ok",
+            "model": "ProsusAI/finbert",
+            "market_sentiment": {
+                "avg_score": round(avg_market_score, 3),
+                "total_news_analyzed": total_positive + total_negative + total_neutral,
+                "positive_news": total_positive,
+                "negative_news": total_negative,
+                "neutral_news": total_neutral
+            },
+            "stock_breakdown": {
+                "total_stocks": len(results),
+                "positive_outlook": positive_stocks,
+                "negative_outlook": negative_stocks,
+                "neutral_outlook": neutral_stocks
+            },
+            "stocks": [
+                {
+                    "symbol": row[0],
+                    "date": str(row[1]),
+                    "sentiment": row[6],
+                    "score": round(row[5], 3),
+                    "news_count": row[7]
+                }
+                for row in sorted(results, key=lambda x: x[5], reverse=True)
+            ]
+        }
+        
+    except Exception as e:
+        logger.error(f"FinBERT market summary error: {e}")
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+
+
+@app.get("/api/finbert/status", tags=["FinBERT Sentiment"])
+async def get_finbert_status(db: Session = Depends(get_db)):
+    """
+    📋 Kiểm tra trạng thái FinBERT analysis
+    
+    Xem đã phân tích bao nhiêu tin, ngày cuối cùng update.
+    """
+    from sqlalchemy import text
+    
+    try:
+        # Check tables exist
+        check_analyzed = text("""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_name = 'analyzed_news'
+            )
+        """)
+        check_summary = text("""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_name = 'sentiment_summary'
+            )
+        """)
+        
+        analyzed_exists = db.execute(check_analyzed).scalar()
+        summary_exists = db.execute(check_summary).scalar()
+        
+        if not analyzed_exists or not summary_exists:
+            return {
+                "status": "not_initialized",
+                "tables_created": {
+                    "analyzed_news": analyzed_exists,
+                    "sentiment_summary": summary_exists
+                },
+                "message": "Run offline script to initialize: python scripts/analyze_news_finbert.py"
+            }
+        
+        # Get stats
+        news_count = db.execute(text("SELECT COUNT(*) FROM analyzed_news")).scalar()
+        symbols_count = db.execute(text("SELECT COUNT(DISTINCT symbol) FROM analyzed_news")).scalar()
+        
+        latest_news = db.execute(text(
+            "SELECT MAX(analyzed_at) FROM analyzed_news"
+        )).scalar()
+        
+        latest_summary = db.execute(text(
+            "SELECT MAX(updated_at) FROM sentiment_summary"
+        )).scalar()
+        
+        # Get symbols analyzed
+        symbols = db.execute(text(
+            "SELECT DISTINCT symbol FROM analyzed_news ORDER BY symbol"
+        )).fetchall()
+        
+        return {
+            "status": "ready",
+            "model": "ProsusAI/finbert",
+            "statistics": {
+                "total_news_analyzed": news_count,
+                "symbols_covered": symbols_count,
+                "symbols": [s[0] for s in symbols]
+            },
+            "last_update": {
+                "news_analysis": str(latest_news) if latest_news else None,
+                "summary_update": str(latest_summary) if latest_summary else None
+            },
+            "instructions": {
+                "update_data": "python scripts/analyze_news_finbert.py",
+                "specific_symbols": "python scripts/analyze_news_finbert.py --symbols VNM FPT",
+                "more_days": "python scripts/analyze_news_finbert.py --days 30"
+            }
+        }
+        
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+
+
 if __name__ == "__main__":
     import uvicorn
     

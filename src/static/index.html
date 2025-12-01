@@ -350,11 +350,42 @@
                             </div>
                         </div>
                         <div class="card-body">
-                            <!-- Sentiment Summary -->
+                            <!-- FinBERT AI Sentiment -->
+                            <div id="finbertSection" style="display:none;background:linear-gradient(135deg, rgba(139,92,246,0.1), rgba(59,130,246,0.1));border:1px solid rgba(139,92,246,0.3);border-radius:12px;padding:20px;margin-bottom:20px;">
+                                <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+                                    <span style="background:linear-gradient(135deg,#8b5cf6,#3b82f6);color:white;padding:4px 12px;border-radius:20px;font-size:0.75rem;font-weight:600;">
+                                        <i class="fas fa-robot"></i> FinBERT AI
+                                    </span>
+                                    <span style="color:var(--text-secondary);font-size:0.8rem;">Phân tích sentiment bằng AI (pre-computed)</span>
+                                </div>
+                                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;">
+                                    <div>
+                                        <div style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:4px;">AI Sentiment Score</div>
+                                        <div id="finbertScore" style="font-size:2rem;font-weight:700;"></div>
+                                    </div>
+                                    <div style="display:flex;gap:20px;">
+                                        <div style="text-align:center;">
+                                            <div style="font-size:1.25rem;font-weight:700;color:#10b981;" id="fbPosCount">0</div>
+                                            <div style="font-size:0.7rem;color:var(--text-secondary);">Positive</div>
+                                        </div>
+                                        <div style="text-align:center;">
+                                            <div style="font-size:1.25rem;font-weight:700;color:#94a3b8;" id="fbNeuCount">0</div>
+                                            <div style="font-size:0.7rem;color:var(--text-secondary);">Neutral</div>
+                                        </div>
+                                        <div style="text-align:center;">
+                                            <div style="font-size:1.25rem;font-weight:700;color:#ef4444;" id="fbNegCount">0</div>
+                                            <div style="font-size:0.7rem;color:var(--text-secondary);">Negative</div>
+                                        </div>
+                                    </div>
+                                    <div id="finbertRecommendation" style="max-width:300px;text-align:right;font-size:0.9rem;"></div>
+                                </div>
+                            </div>
+
+                            <!-- Keyword-based Sentiment Summary -->
                             <div id="sentimentSummary" style="display:none;background:var(--bg-primary);border-radius:12px;padding:20px;margin-bottom:20px;">
                                 <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;">
                                     <div style="flex:1;min-width:200px;">
-                                        <div style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:8px;">Tổng hợp Sentiment</div>
+                                        <div style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:8px;">Tổng hợp Sentiment <span style="font-size:0.7rem;opacity:0.7;">(keyword-based)</span></div>
                                         <div id="sentimentBadge" style="font-size:1.25rem;font-weight:700;"></div>
                                     </div>
                                     <div style="display:flex;gap:24px;">
@@ -1079,6 +1110,7 @@
             const dateFilter = document.getElementById('newsDateFilter').value;
             const newsList = document.getElementById('newsList');
             const summaryDiv = document.getElementById('sentimentSummary');
+            const finbertDiv = document.getElementById('finbertSection');
             
             newsList.innerHTML = '<div style="text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin" style="font-size:2rem;color:var(--accent);"></i><p style="margin-top:16px;color:var(--text-secondary);">Đang tải tin tức...</p></div>';
             
@@ -1086,6 +1118,41 @@
                 const url = symbol ? `${API}/api/news/${symbol}` : `${API}/api/news`;
                 const r = await fetch(url);
                 const data = await r.json();
+                
+                // Also fetch FinBERT data if symbol is selected
+                if (symbol) {
+                    try {
+                        const fbResponse = await fetch(`${API}/api/finbert/sentiment/${symbol}`);
+                        const fbData = await fbResponse.json();
+                        
+                        if (fbData.status === 'ok') {
+                            finbertDiv.style.display = 'block';
+                            const fbSum = fbData.sentiment_summary;
+                            
+                            // Update FinBERT counts
+                            document.getElementById('fbPosCount').textContent = fbSum.positive_count || 0;
+                            document.getElementById('fbNeuCount').textContent = fbSum.neutral_count || 0;
+                            document.getElementById('fbNegCount').textContent = fbSum.negative_count || 0;
+                            
+                            // Update FinBERT score with color
+                            const scoreEl = document.getElementById('finbertScore');
+                            const score = fbSum.avg_score || 0;
+                            const scoreColor = score > 0.2 ? '#10b981' : score < -0.2 ? '#ef4444' : '#94a3b8';
+                            const scoreLabel = score > 0.2 ? '📈 POSITIVE' : score < -0.2 ? '📉 NEGATIVE' : '➡️ NEUTRAL';
+                            scoreEl.innerHTML = `<span style="color:${scoreColor}">${scoreLabel}</span> <span style="font-size:1rem;opacity:0.7;">(${score.toFixed(3)})</span>`;
+                            
+                            // Update recommendation
+                            document.getElementById('finbertRecommendation').innerHTML = fbSum.recommendation || '';
+                        } else {
+                            finbertDiv.style.display = 'none';
+                        }
+                    } catch (fbErr) {
+                        console.log('FinBERT data not available:', fbErr);
+                        finbertDiv.style.display = 'none';
+                    }
+                } else {
+                    finbertDiv.style.display = 'none';
+                }
                 
                 if (data.status === 'success') {
                     // Show sentiment summary if symbol selected
