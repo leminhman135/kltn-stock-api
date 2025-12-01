@@ -1321,7 +1321,7 @@ async def get_market_news(limit: int = 20):
 
 
 @app.get("/api/news/{symbol}", tags=["News"])
-async def get_stock_news(symbol: str, limit: int = 15):
+async def get_stock_news(symbol: str, limit: int = 20):
     """Lấy tin tức cho một mã cổ phiếu cụ thể với phân tích sentiment"""
     try:
         news = news_service.get_all_news(symbol=symbol.upper(), limit=limit)
@@ -1331,12 +1331,12 @@ async def get_stock_news(symbol: str, limit: int = 15):
             "status": "success",
             "symbol": symbol.upper(),
             "sentiment_summary": {
-                "overall": summary["sentiment"],
-                "avg_score": summary["avg_score"],
-                "positive_count": summary["positive"],
-                "negative_count": summary["negative"],
-                "neutral_count": summary["neutral"],
-                "recommendation": summary["recommendation"]
+                "overall": summary.get("overall", "neutral"),
+                "avg_score": summary.get("avg_score", 0),
+                "positive_count": summary.get("positive_count", 0),
+                "negative_count": summary.get("negative_count", 0),
+                "neutral_count": summary.get("neutral_count", 0),
+                "recommendation": summary.get("recommendation", "Đang phân tích...")
             },
             "total_news": len(news),
             "news": [
