@@ -1173,8 +1173,32 @@ async def get_latest_indicators(symbol: str, db: Session = Depends(get_db)):
 # PREDICTION ENDPOINTS
 # =====================================================
 
-# Import ML models
-from src.model import StockPredictor, quick_predict
+# Import ML models with error handling
+try:
+    from src.model import StockPredictor, quick_predict
+    ML_AVAILABLE = True
+    logger.info("✅ ML models loaded successfully")
+except ImportError as e:
+    ML_AVAILABLE = False
+    logger.warning(f"⚠️ ML models not available: {e}")
+    
+    # Fallback quick_predict
+    def quick_predict(prices, steps=7):
+        import numpy as np
+        from datetime import datetime, timedelta
+        if len(prices) < 5:
+            return {'predictions': [], 'error': 'Need at least 5 prices'}
+        prices = np.array(prices)
+        last = prices[-1]
+        trend = (prices[-1] - prices[0]) / len(prices) if len(prices) > 1 else 0
+        preds = [round(last + trend * (i+1) * 0.9**i, 2) for i in range(steps)]
+        today = datetime.now()
+        dates = [(today + timedelta(days=i+1)).strftime('%Y-%m-%d') for i in range(steps)]
+        return {'predictions': preds, 'dates': dates, 'model': 'simple_trend', 'confidence': 0.4}
+    
+    class StockPredictor:
+        def train(self, df): return {'arima': False, 'rf': False, 'message': 'ML not available'}
+        def predict(self, steps=7, model_type='ensemble'): return {'predictions': [], 'dates': [], 'confidence': 0}
 
 # Cache for trained models
 model_cache = {}
