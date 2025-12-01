@@ -1175,7 +1175,7 @@ async def get_latest_indicators(symbol: str, db: Session = Depends(get_db)):
 
 # Import ML models with error handling
 try:
-    from src.model import StockPredictor, quick_predict
+    from src.model import StockMLModel, quick_predict, train_model as train_ml_model, predict_stock, get_model
     ML_AVAILABLE = True
     logger.info("✅ ML models loaded successfully")
 except ImportError as e:
@@ -1195,16 +1195,10 @@ except ImportError as e:
         today = datetime.now()
         dates = [(today + timedelta(days=i+1)).strftime('%Y-%m-%d') for i in range(steps)]
         return {'predictions': preds, 'dates': dates, 'model': 'simple_trend', 'confidence': 0.4}
-    
-    class StockPredictor:
-        def train(self, df): return {'arima': False, 'rf': False, 'message': 'ML not available'}
-        def predict(self, steps=7, model_type='ensemble'): return {'predictions': [], 'dates': [], 'confidence': 0}
 
-# Cache for trained models
-model_cache = {}
 
 @app.post("/api/predictions/train/{symbol}", tags=["Predictions"])
-async def train_model(
+async def train_model_endpoint(
     symbol: str,
     db: Session = Depends(get_db)
 ):
@@ -1221,8 +1215,8 @@ async def train_model(
         StockPrice.stock_id == stock.id
     ).order_by(StockPrice.date).all()
     
-    if len(prices) < 30:
-        raise HTTPException(status_code=400, detail=f"Not enough data: {len(prices)} rows (need 30+)")
+    if len(prices) < 50:
+        raise HTTPException(status_code=400, detail=f"Not enough data: {len(prices)} rows (need 50+)")
     
     # Convert to DataFrame
     import pandas as pd
@@ -1236,26 +1230,20 @@ async def train_model(
     } for p in prices])
     
     # Train model
-    predictor = StockPredictor()
-    result = predictor.train(df)
-    
-    if result['arima'] or result['rf']:
-        # Cache the trained model
-        model_cache[symbol] = predictor
-        
-        return {
-            "status": "success",
-            "symbol": symbol,
-            "data_points": len(prices),
-            "models_trained": {
-                "arima": result['arima'],
-                "random_forest": result['rf']
-            },
-            "metrics": predictor.get_metrics(),
-            "message": result['message']
-        }
+    if ML_AVAILABLE:
+        result = train_ml_model(symbol, df)
+        if result.get('success'):
+            return {
+                "status": "success",
+                "symbol": symbol,
+                "data_points": len(prices),
+                "models": result.get('models', {}),
+                "message": "Models trained successfully"
+            }
+        else:
+            raise HTTPException(status_code=500, detail=result.get('error', 'Training failed'))
     else:
-        raise HTTPException(status_code=500, detail=result['message'])
+        raise HTTPException(status_code=500, detail="ML library not available")
 
 
 @app.post("/api/predictions/predict", tags=["Predictions"])
@@ -1280,15 +1268,7 @@ async def create_prediction(
         if len(prices) < 5:
             raise HTTPException(status_code=400, detail=f"Not enough data: {len(prices)} rows")
         
-        # Quick prediction for small datasets
-        if len(prices) < 30:
-            close_prices = [p.close for p in prices]
-            result = quick_predict(close_prices, steps=request.periods)
-            result['symbol'] = request.symbol
-            result['data_points'] = len(prices)
-            return result
-        
-        # Always train fresh model (cache doesn't persist across serverless instances)
+        # Convert to DataFrame
         import pandas as pd
         df = pd.DataFrame([{
             'date': p.date,
@@ -1299,36 +1279,27 @@ async def create_prediction(
             'volume': p.volume or 0
         } for p in prices])
         
-        predictor = StockPredictor()
-        train_result = predictor.train(df)
-        
-        if not (train_result['arima'] or train_result['rf']):
+        # Use ML prediction if available
+        if ML_AVAILABLE and len(prices) >= 50:
+            result = predict_stock(request.symbol, df, steps=request.periods, model_type=request.model_type)
+        else:
             # Fallback to quick prediction
             close_prices = [p.close for p in prices]
             result = quick_predict(close_prices, steps=request.periods)
-            result['symbol'] = request.symbol
-            result['data_points'] = len(prices)
-            return result
         
-        # Generate predictions
-        result = predictor.predict(steps=request.periods, model_type=request.model_type)
-        
-        # Add metadata
         result['symbol'] = request.symbol
         result['data_points'] = len(prices)
-        result['last_price'] = prices[-1].close
-        result['last_date'] = str(prices[-1].date)
         
         # Save predictions to database
         from datetime import datetime
         try:
-            for i, (pred_date, pred_price) in enumerate(zip(result['dates'], result['predictions'])):
+            for pred_date, pred_price in zip(result.get('dates', []), result.get('predictions', [])):
                 prediction = Prediction(
                     stock_id=stock.id,
                     target_date=datetime.strptime(pred_date, '%Y-%m-%d').date(),
-                    predicted_close=pred_price,
-                    confidence=result['confidence'],
-                    model_name=result['model'],
+                    predicted_close=float(pred_price),
+                    confidence=float(result.get('confidence', 0.5)),
+                    model_name=str(result.get('model', 'ensemble')),
                     created_at=datetime.now()
                 )
                 db.merge(prediction)
