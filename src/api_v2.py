@@ -1173,30 +1173,179 @@ async def get_latest_indicators(symbol: str, db: Session = Depends(get_db)):
 # PREDICTION ENDPOINTS
 # =====================================================
 
-@app.post("/api/predictions/predict", tags=["Predictions"])
-async def create_prediction(
-    request: PredictionRequest,
-    background_tasks: BackgroundTasks,
+# Import ML models
+from src.model import StockPredictor, quick_predict
+
+# Cache for trained models
+model_cache = {}
+
+@app.post("/api/predictions/train/{symbol}", tags=["Predictions"])
+async def train_model(
+    symbol: str,
     db: Session = Depends(get_db)
 ):
     """
-    Create new predictions (triggers model inference)
-    Note: This is a simplified version. Full implementation would load actual models.
+    Train ML models on stock price data
+    Returns training status and metrics
+    """
+    stock = db.query(Stock).filter(Stock.symbol == symbol).first()
+    if not stock:
+        raise HTTPException(status_code=404, detail=f"Stock {symbol} not found")
+    
+    # Get price data
+    prices = db.query(StockPrice).filter(
+        StockPrice.stock_id == stock.id
+    ).order_by(StockPrice.date).all()
+    
+    if len(prices) < 30:
+        raise HTTPException(status_code=400, detail=f"Not enough data: {len(prices)} rows (need 30+)")
+    
+    # Convert to DataFrame
+    import pandas as pd
+    df = pd.DataFrame([{
+        'date': p.date,
+        'open': p.open,
+        'high': p.high,
+        'low': p.low,
+        'close': p.close,
+        'volume': p.volume or 0
+    } for p in prices])
+    
+    # Train model
+    predictor = StockPredictor()
+    result = predictor.train(df)
+    
+    if result['arima'] or result['rf']:
+        # Cache the trained model
+        model_cache[symbol] = predictor
+        
+        return {
+            "status": "success",
+            "symbol": symbol,
+            "data_points": len(prices),
+            "models_trained": {
+                "arima": result['arima'],
+                "random_forest": result['rf']
+            },
+            "metrics": predictor.get_metrics(),
+            "message": result['message']
+        }
+    else:
+        raise HTTPException(status_code=500, detail=result['message'])
+
+
+@app.post("/api/predictions/predict", tags=["Predictions"])
+async def create_prediction(
+    request: PredictionRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Generate price predictions using ML models
+    Automatically trains model if not cached
     """
     stock = db.query(Stock).filter(Stock.symbol == request.symbol).first()
     if not stock:
         raise HTTPException(status_code=404, detail=f"Stock {request.symbol} not found")
     
-    # In production, this would trigger actual model inference
-    # For now, return a task ID
+    # Get price data
+    prices = db.query(StockPrice).filter(
+        StockPrice.stock_id == stock.id
+    ).order_by(StockPrice.date).all()
     
-    return {
-        "status": "processing",
-        "symbol": request.symbol,
-        "periods": request.periods,
-        "model_type": request.model_type,
-        "message": "Prediction task queued. Check /api/predictions/{symbol} for results."
-    }
+    if len(prices) < 5:
+        raise HTTPException(status_code=400, detail=f"Not enough data: {len(prices)} rows")
+    
+    # Quick prediction for small datasets
+    if len(prices) < 30:
+        close_prices = [p.close for p in prices]
+        result = quick_predict(close_prices, steps=request.periods)
+        result['symbol'] = request.symbol
+        result['data_points'] = len(prices)
+        return result
+    
+    # Check if model is cached, train if not
+    if request.symbol not in model_cache:
+        import pandas as pd
+        df = pd.DataFrame([{
+            'date': p.date,
+            'open': p.open,
+            'high': p.high,
+            'low': p.low,
+            'close': p.close,
+            'volume': p.volume or 0
+        } for p in prices])
+        
+        predictor = StockPredictor()
+        train_result = predictor.train(df)
+        
+        if train_result['arima'] or train_result['rf']:
+            model_cache[request.symbol] = predictor
+        else:
+            # Fallback to quick prediction
+            close_prices = [p.close for p in prices]
+            result = quick_predict(close_prices, steps=request.periods)
+            result['symbol'] = request.symbol
+            return result
+    
+    # Generate predictions
+    predictor = model_cache[request.symbol]
+    result = predictor.predict(steps=request.periods, model_type=request.model_type)
+    
+    # Add metadata
+    result['symbol'] = request.symbol
+    result['data_points'] = len(prices)
+    result['last_price'] = prices[-1].close
+    result['last_date'] = str(prices[-1].date)
+    
+    # Save predictions to database
+    from datetime import datetime
+    for i, (pred_date, pred_price) in enumerate(zip(result['dates'], result['predictions'])):
+        prediction = Prediction(
+            stock_id=stock.id,
+            target_date=datetime.strptime(pred_date, '%Y-%m-%d').date(),
+            predicted_close=pred_price,
+            confidence=result['confidence'],
+            model_name=result['model'],
+            created_at=datetime.now()
+        )
+        db.merge(prediction)
+    
+    try:
+        db.commit()
+    except:
+        db.rollback()
+    
+    return result
+
+
+@app.get("/api/predictions/quick/{symbol}", tags=["Predictions"])
+async def quick_prediction(
+    symbol: str,
+    days: int = 7,
+    db: Session = Depends(get_db)
+):
+    """
+    Quick prediction using simple trend + MA
+    Fast but less accurate
+    """
+    stock = db.query(Stock).filter(Stock.symbol == symbol).first()
+    if not stock:
+        raise HTTPException(status_code=404, detail=f"Stock {symbol} not found")
+    
+    prices = db.query(StockPrice).filter(
+        StockPrice.stock_id == stock.id
+    ).order_by(StockPrice.date).limit(100).all()
+    
+    if len(prices) < 5:
+        raise HTTPException(status_code=400, detail="Not enough price data")
+    
+    close_prices = [p.close for p in prices]
+    result = quick_predict(close_prices, steps=days)
+    result['symbol'] = symbol
+    result['last_price'] = prices[-1].close
+    result['last_date'] = str(prices[-1].date)
+    
+    return result
 
 
 @app.get("/api/predictions/{symbol}", response_model=List[PredictionResponse], tags=["Predictions"])
