@@ -1,12 +1,4 @@
-"""
-Trading Data Collection Module
 
-Thu thập dữ liệu giao dịch:
-- Giá: Mở cửa, đóng cửa, cao nhất, thấp nhất
-- Khối lượng giao dịch
-- Giao dịch NDTNN (Nhà đầu tư nước ngoài)
-- Giao dịch tự doanh (CTCK tự thực hiện)
-"""
 
 import pandas as pd
 import numpy as np
@@ -112,9 +104,12 @@ class TradingDataCollector:
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             'Accept': 'application/json, text/plain, */*',
             'Accept-Language': 'en-US,en;q=0.9,vi;q=0.8',
+            'Origin': 'https://dstock.vndirect.com.vn',
+            'Referer': 'https://dstock.vndirect.com.vn/',
         })
         
         # API endpoints
+        self.dchart_api = "https://dchart-api.vndirect.com.vn"  # Primary - works best
         self.vndirect_api = "https://finfo-api.vndirect.com.vn"
         self.ssi_api = "https://iboard.ssi.com.vn"
         self.cafef_api = "https://s.cafef.vn"
@@ -136,10 +131,102 @@ class TradingDataCollector:
         try:
             clean_symbol = symbol.replace('.VN', '').upper()
             
-            # VNDirect API endpoint
+            # Primary: Use dchart API (most reliable)
+            df = self._get_from_dchart_api(clean_symbol, from_date, to_date)
+            if not df.empty:
+                return df
+            
+            # Fallback 1: Try finfo API
+            df = self._get_from_finfo_api(clean_symbol, from_date, to_date)
+            if not df.empty:
+                return df
+            
+            # Fallback 2: Try SSI API
+            return self._get_trading_from_ssi(clean_symbol, from_date, to_date)
+        
+        except Exception as e:
+            logger.error(f"❌ Error fetching trading data: {str(e)}")
+            return pd.DataFrame()
+    
+    def _get_from_dchart_api(self, symbol: str, from_date: str, 
+                              to_date: str) -> pd.DataFrame:
+        """Lấy dữ liệu từ VNDirect dchart API (Primary source)"""
+        try:
+            # Convert dates to timestamps
+            start_dt = datetime.strptime(from_date, '%Y-%m-%d')
+            end_dt = datetime.strptime(to_date, '%Y-%m-%d')
+            
+            from_ts = int(start_dt.timestamp())
+            to_ts = int(end_dt.timestamp())
+            
+            url = f"{self.dchart_api}/dchart/history"
+            params = {
+                'resolution': 'D',
+                'symbol': symbol,
+                'from': from_ts,
+                'to': to_ts
+            }
+            
+            response = self.session.get(url, params=params, timeout=15)
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                if data.get('s') == 'ok' and 't' in data:
+                    # Parse response
+                    records = []
+                    timestamps = data.get('t', [])
+                    opens = data.get('o', [])
+                    highs = data.get('h', [])
+                    lows = data.get('l', [])
+                    closes = data.get('c', [])
+                    volumes = data.get('v', [])
+                    
+                    for i in range(len(timestamps)):
+                        dt = datetime.fromtimestamp(timestamps[i])
+                        
+                        # Calculate change
+                        prev_close = closes[i-1] if i > 0 else opens[i]
+                        price_change = closes[i] - prev_close
+                        price_change_pct = (price_change / prev_close * 100) if prev_close > 0 else 0
+                        
+                        records.append({
+                            'symbol': symbol,
+                            'date': dt.strftime('%Y-%m-%d'),
+                            'open': round(opens[i] * 1000, 0),  # Convert to VND
+                            'high': round(highs[i] * 1000, 0),
+                            'low': round(lows[i] * 1000, 0),
+                            'close': round(closes[i] * 1000, 0),
+                            'volume': volumes[i],
+                            'deal_volume': volumes[i],
+                            'put_through_volume': 0,
+                            'total_value': 0,
+                            'deal_value': 0,
+                            'put_through_value': 0,
+                            'price_change': round(price_change * 1000, 0),
+                            'price_change_percent': round(price_change_pct, 2),
+                            'reference_price': None,
+                            'ceiling_price': None,
+                            'floor_price': None,
+                        })
+                    
+                    df = pd.DataFrame(records)
+                    logger.info(f"✅ [dchart] Fetched {len(df)} records for {symbol}")
+                    return df
+            
+            return pd.DataFrame()
+        
+        except Exception as e:
+            logger.error(f"❌ dchart API error: {str(e)}")
+            return pd.DataFrame()
+    
+    def _get_from_finfo_api(self, symbol: str, from_date: str, 
+                             to_date: str) -> pd.DataFrame:
+        """Lấy dữ liệu từ VNDirect finfo API (Fallback)"""
+        try:
             url = f"{self.vndirect_api}/v4/stock_prices"
             params = {
-                'q': f'code:{clean_symbol}~date:gte:{from_date}~date:lte:{to_date}',
+                'q': f'code:{symbol}~date:gte:{from_date}~date:lte:{to_date}',
                 'sort': 'date',
                 'size': 1000
             }
@@ -152,37 +239,35 @@ class TradingDataCollector:
                 if 'data' in data and len(data['data']) > 0:
                     records = []
                     for item in data['data']:
-                        record = DetailedTradingData(
-                            symbol=clean_symbol,
-                            date=item.get('date', ''),
-                            open=float(item.get('open', 0)) * 1000,  # Convert to VND
-                            high=float(item.get('high', 0)) * 1000,
-                            low=float(item.get('low', 0)) * 1000,
-                            close=float(item.get('close', 0)) * 1000,
-                            volume=float(item.get('nmTotalTradedQty', 0)),
-                            deal_volume=float(item.get('nmTotalTradedQty', 0)),
-                            put_through_volume=float(item.get('ptTotalTradedQty', 0)),
-                            total_value=float(item.get('nmTotalTradedValue', 0)) + 
-                                        float(item.get('ptTotalTradedValue', 0)),
-                            deal_value=float(item.get('nmTotalTradedValue', 0)),
-                            put_through_value=float(item.get('ptTotalTradedValue', 0)),
-                            price_change=float(item.get('change', 0)) * 1000,
-                            price_change_percent=float(item.get('pctChange', 0)),
-                            reference_price=float(item.get('basicPrice', 0)) * 1000,
-                            ceiling_price=float(item.get('ceilingPrice', 0)) * 1000,
-                            floor_price=float(item.get('floorPrice', 0)) * 1000,
-                        )
-                        records.append(record.to_dict())
+                        records.append({
+                            'symbol': symbol,
+                            'date': item.get('date', ''),
+                            'open': float(item.get('open', 0)) * 1000,
+                            'high': float(item.get('high', 0)) * 1000,
+                            'low': float(item.get('low', 0)) * 1000,
+                            'close': float(item.get('close', 0)) * 1000,
+                            'volume': float(item.get('nmTotalTradedQty', 0)),
+                            'deal_volume': float(item.get('nmTotalTradedQty', 0)),
+                            'put_through_volume': float(item.get('ptTotalTradedQty', 0)),
+                            'total_value': float(item.get('nmTotalTradedValue', 0)) + 
+                                          float(item.get('ptTotalTradedValue', 0)),
+                            'deal_value': float(item.get('nmTotalTradedValue', 0)),
+                            'put_through_value': float(item.get('ptTotalTradedValue', 0)),
+                            'price_change': float(item.get('change', 0)) * 1000,
+                            'price_change_percent': float(item.get('pctChange', 0)),
+                            'reference_price': float(item.get('basicPrice', 0)) * 1000,
+                            'ceiling_price': float(item.get('ceilingPrice', 0)) * 1000,
+                            'floor_price': float(item.get('floorPrice', 0)) * 1000,
+                        })
                     
                     df = pd.DataFrame(records)
-                    logger.info(f"✅ Fetched {len(df)} trading records for {symbol}")
+                    logger.info(f"✅ [finfo] Fetched {len(df)} records for {symbol}")
                     return df
             
-            # Fallback: Try SSI API
-            return self._get_trading_from_ssi(clean_symbol, from_date, to_date)
+            return pd.DataFrame()
         
         except Exception as e:
-            logger.error(f"❌ Error fetching trading data: {str(e)}")
+            logger.error(f"❌ finfo API error: {str(e)}")
             return pd.DataFrame()
     
     def _get_trading_from_ssi(self, symbol: str, from_date: str, 
