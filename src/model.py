@@ -290,24 +290,24 @@ class StockPredictor:
         rf_preds = self.rf.predict(steps) if self.rf.model else []
         
         if model_type == 'arima' and arima_preds:
-            result['predictions'] = arima_preds
+            result['predictions'] = [float(x) for x in arima_preds]
             result['confidence'] = 0.65
         elif model_type == 'rf' and rf_preds:
-            result['predictions'] = rf_preds
+            result['predictions'] = [float(x) for x in rf_preds]
             result['confidence'] = 0.72
         elif model_type == 'ensemble' and (arima_preds or rf_preds):
             # Weighted ensemble
             if arima_preds and rf_preds:
                 ensemble = []
                 for a, r in zip(arima_preds, rf_preds):
-                    ensemble.append(a * self.weights['arima'] + r * self.weights['rf'])
+                    ensemble.append(float(a * self.weights['arima'] + r * self.weights['rf']))
                 result['predictions'] = ensemble
                 result['confidence'] = 0.75
             elif rf_preds:
-                result['predictions'] = rf_preds
+                result['predictions'] = [float(x) for x in rf_preds]
                 result['confidence'] = 0.72
             else:
-                result['predictions'] = arima_preds
+                result['predictions'] = [float(x) for x in arima_preds]
                 result['confidence'] = 0.65
         
         return result
