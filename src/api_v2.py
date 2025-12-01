@@ -423,6 +423,249 @@ async def get_ohlcv(
     }
 
 
+@app.get("/api/prices/{symbol}/historical", tags=["Prices"])
+async def get_historical_prices(
+    symbol: str,
+    from_date: str = Query(..., description="Ngày bắt đầu (YYYY-MM-DD), VD: 2020-01-01"),
+    to_date: str = Query(..., description="Ngày kết thúc (YYYY-MM-DD), VD: 2024-12-31"),
+    source: str = Query("auto", description="Nguồn dữ liệu: 'database', 'api', hoặc 'auto'"),
+    db: Session = Depends(get_db)
+):
+    """
+    Lấy dữ liệu giá lịch sử - hỗ trợ tìm kiếm nhiều năm
+    
+    - **from_date**: Ngày bắt đầu (có thể từ nhiều năm trước, VD: 2015-01-01)
+    - **to_date**: Ngày kết thúc
+    - **source**: 
+        - 'database': Chỉ lấy từ database
+        - 'api': Lấy trực tiếp từ VNDirect API
+        - 'auto': Ưu tiên database, nếu không có thì gọi API
+    
+    Ví dụ:
+    - /api/prices/VNM/historical?from_date=2020-01-01&to_date=2024-12-31
+    - /api/prices/FPT/historical?from_date=2015-01-01&to_date=2023-12-31&source=api
+    """
+    from src.data_collection import TradingDataCollector
+    
+    clean_symbol = symbol.upper().replace('.VN', '')
+    
+    result = {
+        "symbol": clean_symbol,
+        "from_date": from_date,
+        "to_date": to_date,
+        "source_used": None,
+        "count": 0,
+        "data": []
+    }
+    
+    # Try database first if source is 'database' or 'auto'
+    if source in ['database', 'auto']:
+        stock = db.query(Stock).filter(Stock.symbol == clean_symbol).first()
+        
+        if stock:
+            prices = db.query(StockPrice).filter(
+                StockPrice.stock_id == stock.id,
+                StockPrice.date >= from_date,
+                StockPrice.date <= to_date
+            ).order_by(StockPrice.date).all()
+            
+            if prices:
+                result["source_used"] = "database"
+                result["count"] = len(prices)
+                result["data"] = [
+                    {
+                        "date": p.date.isoformat(),
+                        "open": p.open,
+                        "high": p.high,
+                        "low": p.low,
+                        "close": p.close,
+                        "volume": p.volume,
+                        "change_percent": p.change_percent
+                    }
+                    for p in prices
+                ]
+                return result
+    
+    # If no data in database or source is 'api', fetch from VNDirect
+    if source in ['api', 'auto']:
+        try:
+            collector = TradingDataCollector()
+            df = collector.get_detailed_trading_data(clean_symbol, from_date, to_date)
+            
+            if not df.empty:
+                result["source_used"] = "vndirect_api"
+                result["count"] = len(df)
+                result["data"] = df.to_dict(orient='records')
+                return result
+        except Exception as e:
+            if source == 'api':
+                raise HTTPException(status_code=500, detail=f"API error: {str(e)}")
+    
+    # No data found
+    if result["count"] == 0:
+        raise HTTPException(
+            status_code=404, 
+            detail=f"Không tìm thấy dữ liệu cho {clean_symbol} từ {from_date} đến {to_date}"
+        )
+    
+    return result
+
+
+@app.get("/api/prices/{symbol}/years", tags=["Prices"])
+async def get_prices_by_year(
+    symbol: str,
+    year: int = Query(..., description="Năm cần xem (VD: 2020, 2021, 2022...)"),
+    db: Session = Depends(get_db)
+):
+    """
+    Lấy toàn bộ dữ liệu giá của một năm cụ thể
+    
+    - **year**: Năm cần lấy dữ liệu (2015-2025)
+    
+    Ví dụ: /api/prices/VNM/years?year=2023
+    """
+    from src.data_collection import TradingDataCollector
+    
+    clean_symbol = symbol.upper().replace('.VN', '')
+    from_date = f"{year}-01-01"
+    to_date = f"{year}-12-31"
+    
+    # Try database first
+    stock = db.query(Stock).filter(Stock.symbol == clean_symbol).first()
+    
+    if stock:
+        prices = db.query(StockPrice).filter(
+            StockPrice.stock_id == stock.id,
+            StockPrice.date >= from_date,
+            StockPrice.date <= to_date
+        ).order_by(StockPrice.date).all()
+        
+        if prices:
+            return {
+                "symbol": clean_symbol,
+                "year": year,
+                "source": "database",
+                "trading_days": len(prices),
+                "first_date": prices[0].date.isoformat(),
+                "last_date": prices[-1].date.isoformat(),
+                "year_open": prices[0].open,
+                "year_close": prices[-1].close,
+                "year_high": max(p.high for p in prices),
+                "year_low": min(p.low for p in prices),
+                "year_change_percent": round(((prices[-1].close / prices[0].open) - 1) * 100, 2),
+                "total_volume": sum(p.volume for p in prices),
+                "data": [
+                    {
+                        "date": p.date.isoformat(),
+                        "open": p.open,
+                        "high": p.high,
+                        "low": p.low,
+                        "close": p.close,
+                        "volume": p.volume
+                    }
+                    for p in prices
+                ]
+            }
+    
+    # Fetch from API
+    try:
+        collector = TradingDataCollector()
+        df = collector.get_detailed_trading_data(clean_symbol, from_date, to_date)
+        
+        if not df.empty:
+            return {
+                "symbol": clean_symbol,
+                "year": year,
+                "source": "vndirect_api",
+                "trading_days": len(df),
+                "first_date": df['date'].iloc[0] if 'date' in df.columns else from_date,
+                "last_date": df['date'].iloc[-1] if 'date' in df.columns else to_date,
+                "data": df.to_dict(orient='records')
+            }
+    except Exception as e:
+        pass
+    
+    raise HTTPException(
+        status_code=404, 
+        detail=f"Không tìm thấy dữ liệu cho {clean_symbol} năm {year}"
+    )
+
+
+@app.get("/api/prices/{symbol}/range", tags=["Prices"])
+async def get_prices_date_range(
+    symbol: str,
+    years: int = Query(5, description="Số năm gần nhất (mặc định 5 năm)"),
+    db: Session = Depends(get_db)
+):
+    """
+    Lấy dữ liệu giá trong khoảng N năm gần nhất
+    
+    - **years**: Số năm cần lấy (1-10 năm)
+    
+    Ví dụ: /api/prices/VNM/range?years=5 (lấy 5 năm gần nhất)
+    """
+    from src.data_collection import TradingDataCollector
+    
+    clean_symbol = symbol.upper().replace('.VN', '')
+    
+    to_date = datetime.now().strftime('%Y-%m-%d')
+    from_date = (datetime.now() - timedelta(days=years*365)).strftime('%Y-%m-%d')
+    
+    # Try database first
+    stock = db.query(Stock).filter(Stock.symbol == clean_symbol).first()
+    
+    if stock:
+        prices = db.query(StockPrice).filter(
+            StockPrice.stock_id == stock.id,
+            StockPrice.date >= from_date,
+            StockPrice.date <= to_date
+        ).order_by(StockPrice.date).all()
+        
+        if prices and len(prices) > 100:  # At least 100 days of data
+            return {
+                "symbol": clean_symbol,
+                "years": years,
+                "from_date": from_date,
+                "to_date": to_date,
+                "source": "database",
+                "trading_days": len(prices),
+                "data": [
+                    {
+                        "date": p.date.isoformat(),
+                        "open": p.open,
+                        "high": p.high,
+                        "low": p.low,
+                        "close": p.close,
+                        "volume": p.volume
+                    }
+                    for p in prices
+                ]
+            }
+    
+    # Fetch from API
+    try:
+        collector = TradingDataCollector()
+        df = collector.get_detailed_trading_data(clean_symbol, from_date, to_date)
+        
+        if not df.empty:
+            return {
+                "symbol": clean_symbol,
+                "years": years,
+                "from_date": from_date,
+                "to_date": to_date,
+                "source": "vndirect_api",
+                "trading_days": len(df),
+                "data": df.to_dict(orient='records')
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lỗi khi lấy dữ liệu: {str(e)}")
+    
+    raise HTTPException(
+        status_code=404, 
+        detail=f"Không tìm thấy dữ liệu cho {clean_symbol}"
+    )
+
+
 # =====================================================
 # TECHNICAL INDICATORS ENDPOINTS
 # =====================================================
