@@ -436,11 +436,17 @@
         let stocks = [], currentSymbol = 'VNM', days = 90, priceChart, predChart, pricesCache = {};
 
         document.addEventListener('DOMContentLoaded', async () => { 
-            await initDates(); 
-            loadStats(); 
-            loadStocks(); 
-            initChart(); 
-            setupNav(); 
+            try {
+                console.log('🚀 Starting app...');
+                initChart();
+                setupNav();
+                await initDates();
+                await loadStats();
+                await loadStocks();
+                console.log('✅ App loaded successfully');
+            } catch(e) {
+                console.error('❌ App init error:', e);
+            }
         });
 
         function setupNav() {
@@ -482,18 +488,21 @@
         }
 
         async function loadStocks() {
+            console.log('📊 Loading stocks...');
             try {
                 const r = await fetch(API + '/api/stocks?limit=100');
+                if (!r.ok) throw new Error('HTTP ' + r.status);
                 stocks = await r.json();
+                console.log('✅ Loaded', stocks.length, 'stocks');
                 renderStocks(stocks);
                 populatePredSelect();
                 if (stocks.length > 0) {
                     selectStock(stocks[0].symbol);
-                    // Auto load giá cho TẤT CẢ mã cổ phiếu
                     loadAllStockPrices();
                 }
             } catch(e) {
-                document.getElementById('stockGrid').innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary)"><button class="btn btn-primary" onclick="initDB()">Khởi tạo DB</button></div>';
+                console.error('❌ loadStocks error:', e);
+                document.getElementById('stockGrid').innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary)"><p>Lỗi tải dữ liệu: ' + e.message + '</p><button class="btn btn-primary" onclick="loadStocks()">Thử lại</button></div>';
             }
         }
 
