@@ -1267,28 +1267,28 @@ async def create_prediction(
     Generate price predictions using ML models
     Automatically trains model if not cached
     """
-    stock = db.query(Stock).filter(Stock.symbol == request.symbol).first()
-    if not stock:
-        raise HTTPException(status_code=404, detail=f"Stock {request.symbol} not found")
-    
-    # Get price data
-    prices = db.query(StockPrice).filter(
-        StockPrice.stock_id == stock.id
-    ).order_by(StockPrice.date).all()
-    
-    if len(prices) < 5:
-        raise HTTPException(status_code=400, detail=f"Not enough data: {len(prices)} rows")
-    
-    # Quick prediction for small datasets
-    if len(prices) < 30:
-        close_prices = [p.close for p in prices]
-        result = quick_predict(close_prices, steps=request.periods)
-        result['symbol'] = request.symbol
-        result['data_points'] = len(prices)
-        return result
-    
-    # Check if model is cached, train if not
-    if request.symbol not in model_cache:
+    try:
+        stock = db.query(Stock).filter(Stock.symbol == request.symbol).first()
+        if not stock:
+            raise HTTPException(status_code=404, detail=f"Stock {request.symbol} not found")
+        
+        # Get price data
+        prices = db.query(StockPrice).filter(
+            StockPrice.stock_id == stock.id
+        ).order_by(StockPrice.date).all()
+        
+        if len(prices) < 5:
+            raise HTTPException(status_code=400, detail=f"Not enough data: {len(prices)} rows")
+        
+        # Quick prediction for small datasets
+        if len(prices) < 30:
+            close_prices = [p.close for p in prices]
+            result = quick_predict(close_prices, steps=request.periods)
+            result['symbol'] = request.symbol
+            result['data_points'] = len(prices)
+            return result
+        
+        # Always train fresh model (cache doesn't persist across serverless instances)
         import pandas as pd
         df = pd.DataFrame([{
             'date': p.date,
@@ -1302,44 +1302,56 @@ async def create_prediction(
         predictor = StockPredictor()
         train_result = predictor.train(df)
         
-        if train_result['arima'] or train_result['rf']:
-            model_cache[request.symbol] = predictor
-        else:
+        if not (train_result['arima'] or train_result['rf']):
             # Fallback to quick prediction
             close_prices = [p.close for p in prices]
             result = quick_predict(close_prices, steps=request.periods)
             result['symbol'] = request.symbol
+            result['data_points'] = len(prices)
             return result
-    
-    # Generate predictions
-    predictor = model_cache[request.symbol]
-    result = predictor.predict(steps=request.periods, model_type=request.model_type)
-    
-    # Add metadata
-    result['symbol'] = request.symbol
-    result['data_points'] = len(prices)
-    result['last_price'] = prices[-1].close
-    result['last_date'] = str(prices[-1].date)
-    
-    # Save predictions to database
-    from datetime import datetime
-    for i, (pred_date, pred_price) in enumerate(zip(result['dates'], result['predictions'])):
-        prediction = Prediction(
-            stock_id=stock.id,
-            target_date=datetime.strptime(pred_date, '%Y-%m-%d').date(),
-            predicted_close=pred_price,
-            confidence=result['confidence'],
-            model_name=result['model'],
-            created_at=datetime.now()
-        )
-        db.merge(prediction)
-    
-    try:
-        db.commit()
-    except:
-        db.rollback()
-    
-    return result
+        
+        # Generate predictions
+        result = predictor.predict(steps=request.periods, model_type=request.model_type)
+        
+        # Add metadata
+        result['symbol'] = request.symbol
+        result['data_points'] = len(prices)
+        result['last_price'] = prices[-1].close
+        result['last_date'] = str(prices[-1].date)
+        
+        # Save predictions to database
+        from datetime import datetime
+        try:
+            for i, (pred_date, pred_price) in enumerate(zip(result['dates'], result['predictions'])):
+                prediction = Prediction(
+                    stock_id=stock.id,
+                    target_date=datetime.strptime(pred_date, '%Y-%m-%d').date(),
+                    predicted_close=pred_price,
+                    confidence=result['confidence'],
+                    model_name=result['model'],
+                    created_at=datetime.now()
+                )
+                db.merge(prediction)
+            db.commit()
+        except Exception as db_err:
+            logger.warning(f"Could not save predictions to DB: {db_err}")
+            db.rollback()
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Prediction error: {e}")
+        # Fallback to quick predict
+        try:
+            close_prices = [p.close for p in prices]
+            result = quick_predict(close_prices, steps=request.periods)
+            result['symbol'] = request.symbol
+            result['error_fallback'] = str(e)
+            return result
+        except:
+            raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
 
 
 @app.get("/api/predictions/quick/{symbol}", tags=["Predictions"])
