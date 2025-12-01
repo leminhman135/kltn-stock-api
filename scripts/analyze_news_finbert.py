@@ -1,6 +1,7 @@
 """
-FinBERT News Sentiment Analyzer - Offline Script
-Chạy trên máy local, phân tích tin tức và lưu kết quả vào database
+PhoBERT Vietnamese Sentiment Analyzer - Offline Script
+Chạy trên máy local, phân tích tin tức tiếng Việt và lưu kết quả vào database
+Sử dụng PhoBERT - model được train cho tiếng Việt
 """
 
 import os
@@ -24,40 +25,41 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-class FinBERTAnalyzer:
-    """FinBERT sentiment analyzer"""
+class VietnameseSentimentAnalyzer:
+    """Vietnamese Sentiment Analyzer using PhoBERT"""
     
     def __init__(self):
-        logger.info("🔄 Loading FinBERT model (first time may take a while)...")
+        logger.info("🔄 Loading Vietnamese Sentiment model (first time may take a while)...")
         try:
-            from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipeline
+            from transformers import AutoTokenizer, AutoModelForSequenceClassification
             import torch
+            import torch.nn.functional as F
             
-            model_name = "ProsusAI/finbert"
+            self.torch = torch
+            self.F = F
+            
+            # PhoBERT Vietnamese Sentiment model
+            # Model được fine-tune cho sentiment analysis tiếng Việt
+            model_name = "wonrax/phobert-base-vietnamese-sentiment"
+            
             self.tokenizer = AutoTokenizer.from_pretrained(model_name)
             self.model = AutoModelForSequenceClassification.from_pretrained(model_name)
             
-            # Create pipeline
-            device = 0 if torch.cuda.is_available() else -1
-            self.pipe = pipeline(
-                "sentiment-analysis",
-                model=self.model,
-                tokenizer=self.tokenizer,
-                device=device,
-                max_length=512,
-                truncation=True
-            )
+            # Move to GPU if available
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            self.model.to(self.device)
+            self.model.eval()
             
             device_name = "GPU (CUDA)" if torch.cuda.is_available() else "CPU"
-            logger.info(f"✅ FinBERT loaded successfully on {device_name}")
+            logger.info(f"✅ PhoBERT Vietnamese Sentiment loaded on {device_name}")
             
         except Exception as e:
-            logger.error(f"❌ Failed to load FinBERT: {e}")
+            logger.error(f"❌ Failed to load model: {e}")
             logger.info("Run: pip install transformers torch")
             raise
     
     def analyze(self, text: str) -> Dict:
-        """Analyze text sentiment"""
+        """Analyze Vietnamese text sentiment"""
         if not text or len(text.strip()) < 10:
             return {
                 'sentiment': 'neutral',
@@ -68,35 +70,41 @@ class FinBERTAnalyzer:
             }
         
         try:
-            result = self.pipe(text[:512])[0]
-            label = result['label'].lower()
-            score = result['score']
+            # Tokenize
+            inputs = self.tokenizer(
+                text[:256],  # PhoBERT max 256 tokens
+                return_tensors="pt",
+                truncation=True,
+                max_length=256,
+                padding=True
+            )
+            inputs = {k: v.to(self.device) for k, v in inputs.items()}
             
-            # Map to scores
-            if label == 'positive':
-                return {
-                    'sentiment': 'positive',
-                    'score': score,
-                    'positive': score,
-                    'negative': (1 - score) / 2,
-                    'neutral': (1 - score) / 2
-                }
-            elif label == 'negative':
-                return {
-                    'sentiment': 'negative',
-                    'score': -score,
-                    'positive': (1 - score) / 2,
-                    'negative': score,
-                    'neutral': (1 - score) / 2
-                }
-            else:
-                return {
-                    'sentiment': 'neutral',
-                    'score': 0.0,
-                    'positive': (1 - score) / 2,
-                    'negative': (1 - score) / 2,
-                    'neutral': score
-                }
+            # Predict
+            with self.torch.no_grad():
+                outputs = self.model(**inputs)
+                probs = self.F.softmax(outputs.logits, dim=1)[0]
+            
+            # Model output: NEG (0), POS (1), NEU (2)
+            neg_score = probs[0].item()
+            pos_score = probs[1].item()
+            neu_score = probs[2].item()
+            
+            # Determine sentiment
+            scores = {'negative': neg_score, 'positive': pos_score, 'neutral': neu_score}
+            sentiment = max(scores, key=scores.get)
+            
+            # Calculate overall score (-1 to 1)
+            overall_score = pos_score - neg_score
+            
+            return {
+                'sentiment': sentiment,
+                'score': round(overall_score, 4),
+                'positive': round(pos_score, 4),
+                'negative': round(neg_score, 4),
+                'neutral': round(neu_score, 4)
+            }
+            
         except Exception as e:
             logger.warning(f"Analysis error: {e}")
             return {
@@ -451,11 +459,11 @@ def main():
     news_list = news_list[:args.limit]
     logger.info(f"📰 Will analyze {len(news_list)} articles")
     
-    # Load FinBERT
+    # Load Vietnamese Sentiment model (PhoBERT)
     try:
-        analyzer = FinBERTAnalyzer()
+        analyzer = VietnameseSentimentAnalyzer()
     except Exception as e:
-        logger.error(f"❌ Failed to load FinBERT: {e}")
+        logger.error(f"❌ Failed to load PhoBERT: {e}")
         return
     
     # Analyze and save
