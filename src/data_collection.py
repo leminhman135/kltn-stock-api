@@ -322,7 +322,7 @@ class VNDirectAPI:
     
     def get_stock_price(self, symbol: str, from_date: str, to_date: str) -> pd.DataFrame:
         """
-        Lấy dữ liệu giá cổ phiếu VN từ VNDirect dchart API (giống n8n HTTP request)
+        Lấy dữ liệu giá cổ phiếu VN từ VNDirect dchart API
         
         Args:
             symbol: Mã cổ phiếu (vd: 'VNM.VN' hoặc 'VNM')
@@ -349,7 +349,7 @@ class VNDirectAPI:
             from_timestamp = int(start_dt.timestamp())
             to_timestamp = int(end_dt.timestamp())
             
-            # API endpoint giống như n8n HTTP request
+            # API endpoint for VNDirect dchart
             url = f"{self.base_url}/dchart/history"
             params = {
                 'resolution': 'D',  # D=daily, 1=1min, 5=5min, 15=15min, 30=30min, 60=1hour

@@ -1,6 +1,14 @@
 """
 Scheduler Service - Tự động hóa các tác vụ định kỳ
-Hỗ trợ: Render Cron Jobs, APScheduler, n8n integration
+
+Hỗ trợ:
+- UptimeRobot: Keep-alive API (ping mỗi 5-10 phút)
+- Render Cron Jobs: Chạy task định kỳ
+- APScheduler: Python-based scheduling
+
+Hiện tại sử dụng:
+- UptimeRobot để keep-alive (https://uptimerobot.com)
+- Render Cron cho daily tasks
 """
 
 import os
@@ -155,7 +163,7 @@ class SchedulerService:
     Supports:
     - APScheduler (nếu installed)
     - Manual trigger via API
-    - n8n webhook integration
+    - UptimeRobot keep-alive
     """
     
     def __init__(self, use_apscheduler: bool = True):
@@ -429,7 +437,7 @@ def create_model_training_task(api_base_url: str, symbol: str, model_type: str =
 
 
 def create_notification_task(webhook_url: str, message_template: str) -> Callable:
-    """Tạo task gửi notification (n8n, Slack, Discord, etc.)"""
+    """Tạo task gửi notification (Slack, Discord, etc.)"""
     def send_notification():
         message = message_template.format(
             timestamp=datetime.now().isoformat(),
@@ -449,152 +457,6 @@ def create_notification_task(webhook_url: str, message_template: str) -> Callabl
             raise
     
     return send_notification
-
-
-# ============= n8n INTEGRATION =============
-
-class N8nIntegration:
-    """
-    Tích hợp với n8n
-    
-    n8n là low-code automation tool, có thể:
-    - Trigger API endpoints định kỳ
-    - Xử lý complex workflows
-    - Kết nối nhiều services
-    
-    Setup n8n:
-    1. Self-host: docker run -it --rm -p 5678:5678 n8nio/n8n
-    2. Cloud: n8n.io
-    """
-    
-    def __init__(self, n8n_webhook_url: str = None):
-        self.webhook_url = n8n_webhook_url
-    
-    def generate_workflow_template(self, 
-                                   api_base_url: str,
-                                   schedule: str = "0 7 * * 1-5") -> Dict:
-        """
-        Tạo template workflow cho n8n
-        
-        Args:
-            api_base_url: URL của Stock API
-            schedule: Cron expression (mặc định 7AM các ngày trong tuần)
-        
-        Returns:
-            Dictionary có thể import vào n8n
-        """
-        workflow = {
-            "name": "Stock Data Daily Update",
-            "nodes": [
-                {
-                    "parameters": {
-                        "rule": {
-                            "interval": [{"field": "cronExpression", "expression": schedule}]
-                        }
-                    },
-                    "name": "Schedule Trigger",
-                    "type": "n8n-nodes-base.scheduleTrigger",
-                    "position": [250, 300]
-                },
-                {
-                    "parameters": {
-                        "method": "POST",
-                        "url": f"{api_base_url}/api/data/fetch-all",
-                        "sendQuery": True,
-                        "queryParameters": {
-                            "parameters": [{"name": "days", "value": "7"}]
-                        },
-                        "options": {"timeout": 300000}
-                    },
-                    "name": "Fetch Stock Data",
-                    "type": "n8n-nodes-base.httpRequest",
-                    "position": [450, 300]
-                },
-                {
-                    "parameters": {
-                        "conditions": {
-                            "boolean": [
-                                {"value1": "={{ $json.success }}", "value2": True}
-                            ]
-                        }
-                    },
-                    "name": "Check Success",
-                    "type": "n8n-nodes-base.if",
-                    "position": [650, 300]
-                },
-                {
-                    "parameters": {
-                        "method": "POST",
-                        "url": f"{api_base_url}/api/predictions/predict",
-                        "sendBody": True,
-                        "bodyParameters": {
-                            "parameters": [
-                                {"name": "symbol", "value": "VNM"},
-                                {"name": "model_type", "value": "ensemble"},
-                                {"name": "days_ahead", "value": "5"}
-                            ]
-                        }
-                    },
-                    "name": "Generate Predictions",
-                    "type": "n8n-nodes-base.httpRequest",
-                    "position": [850, 200]
-                },
-                {
-                    "parameters": {
-                        "content": "=Stock data update failed at {{ $now.toISO() }}"
-                    },
-                    "name": "Error Notification",
-                    "type": "n8n-nodes-base.slack",
-                    "position": [850, 400]
-                }
-            ],
-            "connections": {
-                "Schedule Trigger": {
-                    "main": [[{"node": "Fetch Stock Data", "type": "main", "index": 0}]]
-                },
-                "Fetch Stock Data": {
-                    "main": [[{"node": "Check Success", "type": "main", "index": 0}]]
-                },
-                "Check Success": {
-                    "main": [
-                        [{"node": "Generate Predictions", "type": "main", "index": 0}],
-                        [{"node": "Error Notification", "type": "main", "index": 0}]
-                    ]
-                }
-            }
-        }
-        
-        return workflow
-    
-    def trigger_webhook(self, data: Dict = None) -> Dict:
-        """Trigger n8n webhook"""
-        if not self.webhook_url:
-            return {'error': 'No webhook URL configured'}
-        
-        try:
-            response = requests.post(
-                self.webhook_url,
-                json=data or {'trigger': 'manual', 'timestamp': datetime.now().isoformat()},
-                timeout=30
-            )
-            return {
-                'status': 'triggered',
-                'response_code': response.status_code
-            }
-        except Exception as e:
-            return {'error': str(e)}
-    
-    def export_workflow_json(self, api_base_url: str, output_file: str = None) -> str:
-        """Export workflow template thành JSON file"""
-        workflow = self.generate_workflow_template(api_base_url)
-        json_str = json.dumps(workflow, indent=2)
-        
-        if output_file:
-            with open(output_file, 'w') as f:
-                f.write(json_str)
-            logger.info(f"Workflow exported to {output_file}")
-        
-        return json_str
 
 
 # ============= RENDER CRON JOBS =============
@@ -735,7 +597,7 @@ if __name__ == "__main__":
     print("\nSupported scheduling methods:")
     print("1. APScheduler (Python-based, runs within API)")
     print("2. Render Cron Jobs (render.yaml configuration)")
-    print("3. n8n Workflows (external automation)")
+    print("3. UptimeRobot (Keep-alive, miễn phí)")
     print("\nUsage:")
     print("  service = setup_default_scheduler('https://your-api.com')")
     print("  service.start()")

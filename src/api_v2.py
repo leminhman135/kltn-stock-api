@@ -1895,7 +1895,7 @@ async def sync_daily_data(
     3. Lưu vào database
     
     **Dùng cho:**
-    - Cron job hàng ngày (Render Cron, n8n, etc.)
+    - Cron job hàng ngày (Render Cron)
     - Đảm bảo dữ liệu luôn cập nhật liên tục
     
     **Ví dụ:**
@@ -2663,43 +2663,17 @@ async def get_scheduler_status():
     return {
         "status": "available",
         "scheduler_type": "render_cron",
-        "message": "Use Render Cron Jobs or n8n for scheduling",
+        "message": "Use Render Cron Jobs or UptimeRobot for scheduling",
+        "keep_alive": {
+            "service": "UptimeRobot",
+            "url": "https://uptimerobot.com",
+            "interval": "5-10 minutes"
+        },
         "available_tasks": [
             {"name": "daily-data-fetch", "schedule": "0 7 * * 1-5", "description": "Fetch data 7AM UTC"},
             {"name": "weekly-full-update", "schedule": "0 0 * * 0", "description": "Full update Sunday"},
             {"name": "health-check", "schedule": "*/10 * * * *", "description": "Every 10 minutes"}
         ]
-    }
-
-
-@app.get("/api/scheduler/n8n-workflow", tags=["Scheduler"])
-async def get_n8n_workflow():
-    """
-    Lấy template n8n workflow để import
-    
-    Hướng dẫn:
-    1. Copy JSON output
-    2. Mở n8n -> Workflows -> Import from JSON
-    3. Paste và configure
-    """
-    from src.scheduler.scheduler_service import N8nIntegration
-    
-    # Get base URL from request
-    base_url = "https://kltn-stock-api.onrender.com"
-    
-    n8n = N8nIntegration()
-    workflow = n8n.generate_workflow_template(base_url)
-    
-    return {
-        "message": "n8n Workflow Template - Import this JSON into n8n",
-        "instructions": [
-            "1. Open n8n (self-hosted or cloud)",
-            "2. Go to Workflows -> Import from JSON",
-            "3. Paste the 'workflow' object below",
-            "4. Configure Slack/Discord node for notifications",
-            "5. Activate the workflow"
-        ],
-        "workflow": workflow
     }
 
 
