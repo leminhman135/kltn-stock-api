@@ -117,36 +117,21 @@
         .down { color: var(--danger); }
         .neutral { color: var(--warning); }
         
-        /* SSI iBoard Style Table */
-        .ssi-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; min-width: 1200px; }
-        .ssi-table th { background: #1a2942; color: #8b9cb5; font-weight: 500; padding: 8px 6px; text-align: center; border: 1px solid #2d3e50; font-size: 0.7rem; white-space: nowrap; }
-        .ssi-table th.header-group { background: #1e3a5f; }
-        .ssi-table th.sticky-col { position: sticky; left: 0; z-index: 2; background: #1a2942; }
-        .ssi-table td { padding: 6px 8px; text-align: right; border: 1px solid #2d3e50; font-family: 'Consolas', monospace; }
-        .ssi-table td.sticky-col { position: sticky; left: 0; z-index: 1; background: var(--bg-card); font-weight: 700; text-align: left; }
-        .ssi-table tbody tr { transition: background 0.15s; }
-        .ssi-table tbody tr:hover { background: rgba(59, 130, 246, 0.08); }
+        /* Market Table - Clean Style */
+        .market-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .market-table th { background: #1a2942; color: #8b9cb5; font-weight: 600; padding: 12px 10px; text-align: center; border: 1px solid #2d3e50; font-size: 0.75rem; white-space: nowrap; }
+        .market-table th.sticky-col { position: sticky; left: 0; z-index: 2; background: #1a2942; }
+        .market-table td { padding: 10px 12px; text-align: right; border: 1px solid #2d3e50; font-family: 'Consolas', 'Monaco', monospace; }
+        .market-table td.sticky-col { position: sticky; left: 0; z-index: 1; background: var(--bg-card); font-weight: 700; text-align: left; }
+        .market-table tbody tr { transition: background 0.15s; cursor: pointer; }
+        .market-table tbody tr:hover { background: rgba(59, 130, 246, 0.1); }
         
-        /* Price colors - SSI style */
+        /* Price colors */
         .price-ceil { color: #f030f0 !important; }    /* Trần - Tím */
         .price-floor { color: #00e5ff !important; }   /* Sàn - Xanh dương */
         .price-up { color: #00e676 !important; }      /* Tăng - Xanh lá */
         .price-down { color: #ff1744 !important; }    /* Giảm - Đỏ */
         .price-ref { color: #ffeb3b !important; }     /* Tham chiếu - Vàng */
-        .price-neutral { color: #ffeb3b !important; }
-        
-        /* Volume styling */
-        .vol-buy { background: rgba(0, 230, 118, 0.15); }
-        .vol-sell { background: rgba(255, 23, 68, 0.15); }
-        
-        /* Symbol column */
-        .symbol-cell { font-weight: 700; font-size: 0.85rem; cursor: pointer; }
-        .symbol-cell:hover { color: var(--accent); }
-        
-        /* Bid/Ask columns */
-        .bid-col { background: rgba(0, 230, 118, 0.05); }
-        .ask-col { background: rgba(255, 23, 68, 0.05); }
-        .match-col { background: rgba(255, 235, 59, 0.05); }
         
         /* Models Grid */
         .models-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
@@ -295,41 +280,35 @@
                     </div>
                 </div>
 
-                <!-- Market Table - SSI iBoard Style -->
+                <!-- Market Table - Clean Style -->
                 <div class="tab-content" id="page-market">
                     <div class="card">
                         <div class="card-header">
-                            <div class="card-title"><i class="fas fa-table"></i> Bảng giá VN30 - Realtime</div>
+                            <div class="card-title"><i class="fas fa-table"></i> Bảng giá VN30</div>
                             <div style="display:flex;gap:8px;align-items:center;">
-                                <div class="tabs" style="margin:0;padding:2px;">
-                                    <div class="tab active" onclick="filterMarket('all')">VN30</div>
-                                    <div class="tab" onclick="filterMarket('hose')">HOSE</div>
-                                    <div class="tab" onclick="filterMarket('hnx')">HNX</div>
-                                </div>
-                                <button class="btn btn-primary" onclick="loadMarketTable()"><i class="fas fa-sync"></i></button>
+                                <button class="btn btn-primary" onclick="loadMarketTable()"><i class="fas fa-sync"></i> Cập nhật</button>
                             </div>
                         </div>
                         <div class="card-body" style="padding:0;overflow-x:auto;">
-                            <table class="ssi-table">
+                            <table class="market-table">
                                 <thead>
                                     <tr>
-                                        <th rowspan="2" class="sticky-col">CK</th>
-                                        <th rowspan="2">TC</th>
-                                        <th rowspan="2">Trần</th>
-                                        <th rowspan="2">Sàn</th>
-                                        <th colspan="3" class="header-group">Bên mua</th>
-                                        <th colspan="3" class="header-group">Khớp lệnh</th>
-                                        <th colspan="3" class="header-group">Bên bán</th>
-                                        <th rowspan="2">Tổng KL</th>
-                                    </tr>
-                                    <tr>
-                                        <th>Giá 3</th><th>Giá 2</th><th>Giá 1</th>
-                                        <th>Giá</th><th>KL</th><th>+/-</th>
-                                        <th>Giá 1</th><th>Giá 2</th><th>Giá 3</th>
+                                        <th class="sticky-col">Mã CK</th>
+                                        <th>TC</th>
+                                        <th>Trần</th>
+                                        <th>Sàn</th>
+                                        <th>Mở cửa</th>
+                                        <th>Cao nhất</th>
+                                        <th>Thấp nhất</th>
+                                        <th>Đóng cửa</th>
+                                        <th>+/-</th>
+                                        <th>%</th>
+                                        <th>Khối lượng</th>
+                                        <th>Ngày</th>
                                     </tr>
                                 </thead>
                                 <tbody id="marketTable">
-                                    <tr><td colspan="14" style="text-align:center;padding:40px;">Đang tải...</td></tr>
+                                    <tr><td colspan="12" style="text-align:center;padding:40px;">Đang tải...</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -603,7 +582,7 @@
 
         async function loadMarketTable() {
             const tbody = document.getElementById('marketTable');
-            tbody.innerHTML = '<tr><td colspan="14" style="text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin"></i> Đang tải bảng giá...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin"></i> Đang tải bảng giá...</td></tr>';
             
             const rows = [];
             for (const s of stocks.slice(0, 30)) {
@@ -612,64 +591,54 @@
                     if (r.ok) {
                         const data = await r.json();
                         if (data && data.length > 0) {
-                            const p = data[data.length - 1]; // Latest
+                            const p = data[data.length - 1]; // Latest price
                             const prev = data.length > 1 ? data[data.length - 2] : p;
                             
-                            // Calculate reference price, ceiling, floor
+                            // Real data from API
+                            const open = p.open;
+                            const high = p.high;
+                            const low = p.low;
+                            const close = p.close;
+                            const vol = p.volume || 0;
+                            const date = p.date;
+                            
+                            // Calculate reference, ceiling, floor from previous close
                             const ref = prev.close;
                             const ceil = ref * 1.07;
                             const floor = ref * 0.93;
                             
-                            // Current price info
-                            const close = p.close;
+                            // Calculate change
                             const change = close - ref;
                             const pct = ref > 0 ? (change / ref * 100) : 0;
                             
-                            // Determine price color class
+                            // Determine color class
                             let priceClass = 'price-ref';
                             if (close >= ceil * 0.99) priceClass = 'price-ceil';
                             else if (close <= floor * 1.01) priceClass = 'price-floor';
                             else if (change > 0) priceClass = 'price-up';
                             else if (change < 0) priceClass = 'price-down';
                             
-                            // Simulated bid/ask prices (±0.1-0.3%)
-                            const bid1 = close * 0.999, bid2 = close * 0.997, bid3 = close * 0.995;
-                            const ask1 = close * 1.001, ask2 = close * 1.003, ask3 = close * 1.005;
-                            
-                            // Random volumes for bid/ask
-                            const vol = p.volume || 0;
-                            const randVol = () => Math.floor(Math.random() * vol * 0.1) + 100;
-                            
                             rows.push(`
                                 <tr onclick="selectStock('${s.symbol}');document.querySelector('[data-page=dashboard]').click()">
-                                    <td class="sticky-col symbol-cell">${s.symbol}</td>
+                                    <td class="sticky-col" style="font-weight:700;color:${change>=0?'#00e676':'#ff1744'}">${s.symbol}</td>
                                     <td class="price-ref">${fmtPrice(ref)}</td>
                                     <td class="price-ceil">${fmtPrice(ceil)}</td>
                                     <td class="price-floor">${fmtPrice(floor)}</td>
-                                    <td class="bid-col ${priceClass}">${fmtPrice(bid3)}</td>
-                                    <td class="bid-col ${priceClass}">${fmtPrice(bid2)}</td>
-                                    <td class="bid-col ${priceClass}">${fmtPrice(bid1)}</td>
-                                    <td class="match-col ${priceClass}" style="font-weight:700;">${fmtPrice(close)}</td>
-                                    <td class="match-col">${fmtVol(vol)}</td>
-                                    <td class="match-col ${priceClass}">${change>=0?'+':''}${(change*1000).toFixed(0)}</td>
-                                    <td class="ask-col ${priceClass}">${fmtPrice(ask1)}</td>
-                                    <td class="ask-col ${priceClass}">${fmtPrice(ask2)}</td>
-                                    <td class="ask-col ${priceClass}">${fmtPrice(ask3)}</td>
-                                    <td>${fmtVol(vol)}</td>
+                                    <td>${fmtPrice(open)}</td>
+                                    <td class="price-up">${fmtPrice(high)}</td>
+                                    <td class="price-down">${fmtPrice(low)}</td>
+                                    <td class="${priceClass}" style="font-weight:700;">${fmtPrice(close)}</td>
+                                    <td class="${priceClass}">${change>=0?'+':''}${(change*1000).toFixed(0)}</td>
+                                    <td class="${priceClass}">${change>=0?'+':''}${pct.toFixed(2)}%</td>
+                                    <td style="color:#64748b;">${fmtVol(vol)}</td>
+                                    <td style="color:#64748b;font-size:0.75rem;">${date}</td>
                                 </tr>
                             `);
                         }
                     }
                 } catch(e) { console.error(s.symbol, e); }
             }
-            tbody.innerHTML = rows.length ? rows.join('') : '<tr><td colspan="14" style="text-align:center;color:var(--text-secondary);padding:40px;">Không có dữ liệu</td></tr>';
-        }
-        
-        function filterMarket(exchange) {
-            document.querySelectorAll('#page-market .tab').forEach(t => t.classList.remove('active'));
-            event.target.classList.add('active');
-            // Filter logic here if needed
-            loadMarketTable();
+            tbody.innerHTML = rows.length ? rows.join('') : '<tr><td colspan="12" style="text-align:center;color:var(--text-secondary);padding:40px;">Không có dữ liệu</td></tr>';
         }
 
         function initChart() {
