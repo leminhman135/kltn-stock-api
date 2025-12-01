@@ -700,7 +700,7 @@ async def get_available_dates(
     }
 
 
-@app.get("/api/market-board/compare", tags=["Market Board"])
+@app.get("/api/market/board-compare", tags=["Market Board"])
 async def compare_dates(
     date1: str = Query(..., description="Ngày 1 (YYYY-MM-DD)"),
     date2: str = Query(..., description="Ngày 2 (YYYY-MM-DD)"),
@@ -710,7 +710,7 @@ async def compare_dates(
     """
     📊 So sánh bảng giá giữa 2 ngày
     
-    Ví dụ: /api/market-board/compare?date1=2024-11-28&date2=2024-11-29
+    Ví dụ: /api/market/board-compare?date1=2024-11-28&date2=2024-11-29
     """
     from datetime import datetime as dt
     
