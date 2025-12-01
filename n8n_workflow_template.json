@@ -1,0 +1,188 @@
+{
+  "name": "KLTN Stock Daily Update",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 15 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Daily 3PM Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://kltn-stock-api.onrender.com/api/data/fetch-all",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "days",
+              "value": "7"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "id": "fetch-data",
+      "name": "1. Fetch All Stock Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://kltn-stock-api.onrender.com/api/predictions/predict",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"symbol\": \"VNM\",\n  \"model_type\": \"ensemble\",\n  \"days_ahead\": 5\n}",
+        "options": {
+          "timeout": 600000
+        }
+      },
+      "id": "predict-vnm",
+      "name": "2. Predict VNM",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [720, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://kltn-stock-api.onrender.com/api/predictions/predict",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"symbol\": \"FPT\",\n  \"model_type\": \"ensemble\",\n  \"days_ahead\": 5\n}",
+        "options": {
+          "timeout": 600000
+        }
+      },
+      "id": "predict-fpt",
+      "name": "2. Predict FPT",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [720, 350]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://kltn-stock-api.onrender.com/api/predictions/predict",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"symbol\": \"HPG\",\n  \"model_type\": \"ensemble\",\n  \"days_ahead\": 5\n}",
+        "options": {
+          "timeout": 600000
+        }
+      },
+      "id": "predict-hpg",
+      "name": "2. Predict HPG",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [720, 500]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "status",
+              "value": "completed"
+            },
+            {
+              "name": "message",
+              "value": "Stock data updated and predictions generated"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "done",
+      "name": "3. Done",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
+      "position": [960, 350]
+    }
+  ],
+  "connections": {
+    "Daily 3PM Trigger": {
+      "main": [
+        [
+          {
+            "node": "1. Fetch All Stock Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "1. Fetch All Stock Data": {
+      "main": [
+        [
+          {
+            "node": "2. Predict VNM",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "2. Predict FPT",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "2. Predict HPG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2. Predict VNM": {
+      "main": [
+        [
+          {
+            "node": "3. Done",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2. Predict FPT": {
+      "main": [
+        [
+          {
+            "node": "3. Done",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2. Predict HPG": {
+      "main": [
+        [
+          {
+            "node": "3. Done",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

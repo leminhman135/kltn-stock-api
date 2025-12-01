@@ -1560,6 +1560,669 @@ async def get_render_cron_config():
     }
 
 
+# =====================================================
+# EXTENDED DATA COLLECTION ENDPOINTS
+# =====================================================
+
+# --- Trading Data Endpoints ---
+
+@app.get("/api/trading/detailed/{symbol}", tags=["Trading Data"])
+async def get_detailed_trading_data(
+    symbol: str,
+    from_date: str = Query(..., description="Start date (YYYY-MM-DD)"),
+    to_date: str = Query(..., description="End date (YYYY-MM-DD)")
+):
+    """
+    Lấy dữ liệu giao dịch chi tiết
+    
+    Bao gồm:
+    - Giá OHLC
+    - KL khớp lệnh, KL thỏa thuận
+    - GT khớp lệnh, GT thỏa thuận
+    - Giá tham chiếu, trần, sàn
+    """
+    from src.data_collection.trading_data import TradingDataCollector
+    
+    collector = TradingDataCollector()
+    df = collector.get_detailed_trading_data(symbol, from_date, to_date)
+    
+    if df.empty:
+        raise HTTPException(status_code=404, detail=f"No trading data found for {symbol}")
+    
+    return {
+        "symbol": symbol.upper().replace('.VN', ''),
+        "from_date": from_date,
+        "to_date": to_date,
+        "count": len(df),
+        "data": df.to_dict(orient='records')
+    }
+
+
+@app.get("/api/trading/foreign/{symbol}", tags=["Trading Data"])
+async def get_foreign_trading_data(
+    symbol: str,
+    from_date: str = Query(..., description="Start date (YYYY-MM-DD)"),
+    to_date: str = Query(..., description="End date (YYYY-MM-DD)")
+):
+    """
+    Lấy dữ liệu giao dịch NDTNN
+    
+    Bao gồm:
+    - Khối lượng mua/bán/ròng
+    - Giá trị mua/bán/ròng
+    - Room nước ngoài còn lại
+    - % sở hữu nước ngoài
+    """
+    from src.data_collection.trading_data import TradingDataCollector
+    
+    collector = TradingDataCollector()
+    df = collector.get_foreign_trading_data(symbol, from_date, to_date)
+    
+    if df.empty:
+        raise HTTPException(status_code=404, detail=f"No foreign trading data found for {symbol}")
+    
+    return {
+        "symbol": symbol.upper().replace('.VN', ''),
+        "from_date": from_date,
+        "to_date": to_date,
+        "count": len(df),
+        "data": df.to_dict(orient='records')
+    }
+
+
+@app.get("/api/trading/proprietary/{symbol}", tags=["Trading Data"])
+async def get_proprietary_trading_data(
+    symbol: str,
+    from_date: str = Query(..., description="Start date (YYYY-MM-DD)"),
+    to_date: str = Query(..., description="End date (YYYY-MM-DD)")
+):
+    """
+    Lấy dữ liệu giao dịch tự doanh
+    
+    Giao dịch của các CTCK tự thực hiện cho chính họ
+    """
+    from src.data_collection.trading_data import TradingDataCollector
+    
+    collector = TradingDataCollector()
+    df = collector.get_proprietary_trading_data(symbol, from_date, to_date)
+    
+    if df.empty:
+        raise HTTPException(status_code=404, detail=f"No proprietary trading data found for {symbol}")
+    
+    return {
+        "symbol": symbol.upper().replace('.VN', ''),
+        "from_date": from_date,
+        "to_date": to_date,
+        "count": len(df),
+        "data": df.to_dict(orient='records')
+    }
+
+
+@app.get("/api/trading/summary/{symbol}", tags=["Trading Data"])
+async def get_trading_summary(
+    symbol: str,
+    days: int = Query(30, description="Number of days")
+):
+    """
+    Lấy tổng hợp dữ liệu giao dịch
+    
+    Bao gồm tổng hợp từ:
+    - Giao dịch thông thường
+    - Giao dịch NDTNN
+    - Giao dịch tự doanh
+    """
+    from src.data_collection.trading_data import TradingDataCollector
+    
+    collector = TradingDataCollector()
+    summary = collector.get_trading_summary(symbol, days)
+    
+    if not summary:
+        raise HTTPException(status_code=404, detail=f"Cannot generate summary for {symbol}")
+    
+    return summary
+
+
+@app.get("/api/trading/orderbook/{symbol}", tags=["Trading Data"])
+async def get_order_book(symbol: str):
+    """
+    Lấy sổ lệnh (Order Book) realtime
+    
+    3 bước giá mua/bán tốt nhất
+    """
+    from src.data_collection.trading_data import TradingDataCollector
+    
+    collector = TradingDataCollector()
+    order_book = collector.get_order_book(symbol)
+    
+    if not order_book:
+        raise HTTPException(status_code=404, detail=f"Cannot get order book for {symbol}")
+    
+    return order_book
+
+
+# --- Market Data Endpoints ---
+
+@app.get("/api/market/index/{index_code}", tags=["Market Data"])
+async def get_market_index(
+    index_code: str,
+    from_date: str = Query(..., description="Start date (YYYY-MM-DD)"),
+    to_date: str = Query(..., description="End date (YYYY-MM-DD)")
+):
+    """
+    Lấy dữ liệu chỉ số thị trường
+    
+    Các chỉ số: VNINDEX, VN30, VN100, HNXINDEX, HNX30, UPCOM
+    """
+    from src.data_collection.market_data import MarketDataCollector
+    
+    collector = MarketDataCollector()
+    df = collector.get_index_data(index_code.upper(), from_date, to_date)
+    
+    if df.empty:
+        raise HTTPException(status_code=404, detail=f"No data found for index {index_code}")
+    
+    return {
+        "index_code": index_code.upper(),
+        "from_date": from_date,
+        "to_date": to_date,
+        "count": len(df),
+        "data": df.to_dict(orient='records')
+    }
+
+
+@app.get("/api/market/index/realtime/{index_code}", tags=["Market Data"])
+async def get_realtime_index(index_code: str = "VNINDEX"):
+    """
+    Lấy dữ liệu chỉ số realtime
+    
+    Bao gồm: Open, High, Low, Close, Volume, Value, Advances, Declines
+    """
+    from src.data_collection.market_data import MarketDataCollector
+    
+    collector = MarketDataCollector()
+    data = collector.get_realtime_index(index_code.upper())
+    
+    if not data:
+        raise HTTPException(status_code=404, detail=f"Cannot get realtime data for {index_code}")
+    
+    return data
+
+
+@app.get("/api/market/indices/all", tags=["Market Data"])
+async def get_all_indices_realtime():
+    """
+    Lấy dữ liệu realtime tất cả các chỉ số chính
+    """
+    from src.data_collection.market_data import MarketDataCollector
+    
+    collector = MarketDataCollector()
+    df = collector.get_all_indices_realtime()
+    
+    return {
+        "timestamp": datetime.now().isoformat(),
+        "count": len(df),
+        "data": df.to_dict(orient='records') if not df.empty else []
+    }
+
+
+@app.get("/api/market/freefloat/{symbol}", tags=["Market Data"])
+async def get_freefloat(symbol: str):
+    """
+    Lấy thông tin tỷ lệ Freefloat
+    
+    % cổ phiếu tự do chuyển nhượng trên thị trường
+    """
+    from src.data_collection.market_data import MarketDataCollector
+    
+    collector = MarketDataCollector()
+    data = collector.get_freefloat_data(symbol)
+    
+    if not data:
+        raise HTTPException(status_code=404, detail=f"Cannot get freefloat data for {symbol}")
+    
+    return data
+
+
+@app.get("/api/market/foreign-ownership/{symbol}", tags=["Market Data"])
+async def get_foreign_ownership(symbol: str):
+    """
+    Lấy thông tin tỷ lệ sở hữu nước ngoài
+    
+    Bao gồm: % sở hữu, room tối đa, room còn lại
+    """
+    from src.data_collection.market_data import MarketDataCollector
+    
+    collector = MarketDataCollector()
+    data = collector.get_foreign_ownership(symbol)
+    
+    if not data:
+        raise HTTPException(status_code=404, detail=f"Cannot get foreign ownership for {symbol}")
+    
+    return data
+
+
+@app.get("/api/market/index-components/{index_code}", tags=["Market Data"])
+async def get_index_components(index_code: str = "VN30"):
+    """
+    Lấy danh sách thành phần của chỉ số
+    
+    VD: VN30, HNX30, VNMIDCAP, etc.
+    """
+    from src.data_collection.market_data import MarketDataCollector
+    
+    collector = MarketDataCollector()
+    df = collector.get_index_components(index_code.upper())
+    
+    return {
+        "index_code": index_code.upper(),
+        "count": len(df),
+        "components": df.to_dict(orient='records') if not df.empty else []
+    }
+
+
+@app.get("/api/market/summary/{exchange}", tags=["Market Data"])
+async def get_market_summary(exchange: str = "HOSE"):
+    """
+    Lấy tổng hợp thị trường
+    
+    Exchanges: HOSE, HNX, UPCOM
+    """
+    from src.data_collection.market_data import MarketDataCollector
+    
+    collector = MarketDataCollector()
+    summary = collector.get_market_summary(exchange.upper())
+    
+    return summary
+
+
+@app.get("/api/market/high-foreign-ownership", tags=["Market Data"])
+async def get_stocks_high_foreign_ownership(
+    exchange: str = Query("HOSE", description="Exchange: HOSE, HNX, UPCOM"),
+    min_percent: float = Query(40, description="Minimum foreign ownership %")
+):
+    """
+    Lấy danh sách CP có tỷ lệ sở hữu nước ngoài cao
+    """
+    from src.data_collection.market_data import MarketDataCollector
+    
+    collector = MarketDataCollector()
+    df = collector.get_stocks_by_foreign_ownership(exchange.upper(), min_percent)
+    
+    return {
+        "exchange": exchange.upper(),
+        "min_foreign_percent": min_percent,
+        "count": len(df),
+        "stocks": df.to_dict(orient='records') if not df.empty else []
+    }
+
+
+# --- Financial Data Endpoints ---
+
+@app.get("/api/financial/valuation/{symbol}", tags=["Financial Data"])
+async def get_valuation_data(symbol: str):
+    """
+    Lấy dữ liệu định giá
+    
+    Bao gồm: P/E, P/B, P/S, EV/EBITDA, EPS, Book Value, Dividend Yield
+    """
+    from src.data_collection.financial_data import FinancialDataCollector
+    
+    collector = FinancialDataCollector()
+    data = collector.get_valuation_data(symbol)
+    
+    if not data:
+        raise HTTPException(status_code=404, detail=f"Cannot get valuation data for {symbol}")
+    
+    return data
+
+
+@app.get("/api/financial/fundamentals/{symbol}", tags=["Financial Data"])
+async def get_fundamental_data(
+    symbol: str,
+    period_type: str = Query("quarter", description="Period: quarter or year"),
+    periods: int = Query(8, description="Number of periods")
+):
+    """
+    Lấy dữ liệu tài chính cơ bản
+    
+    Bao gồm: Doanh thu, Lợi nhuận, Biên lợi nhuận, ROE, ROA, Đòn bẩy
+    """
+    from src.data_collection.financial_data import FinancialDataCollector
+    
+    collector = FinancialDataCollector()
+    df = collector.get_fundamental_data(symbol, period_type, periods)
+    
+    if df.empty:
+        raise HTTPException(status_code=404, detail=f"Cannot get fundamentals for {symbol}")
+    
+    return {
+        "symbol": symbol.upper().replace('.VN', ''),
+        "period_type": period_type,
+        "count": len(df),
+        "data": df.to_dict(orient='records')
+    }
+
+
+@app.get("/api/financial/balance-sheet/{symbol}", tags=["Financial Data"])
+async def get_balance_sheet(
+    symbol: str,
+    periods: int = Query(8, description="Number of periods")
+):
+    """
+    Lấy Bảng cân đối kế toán
+    """
+    from src.data_collection.financial_data import FinancialDataCollector
+    
+    collector = FinancialDataCollector()
+    df = collector.get_balance_sheet(symbol, periods)
+    
+    if df.empty:
+        raise HTTPException(status_code=404, detail=f"Cannot get balance sheet for {symbol}")
+    
+    return {
+        "symbol": symbol.upper().replace('.VN', ''),
+        "count": len(df),
+        "data": df.to_dict(orient='records')
+    }
+
+
+@app.get("/api/financial/income-statement/{symbol}", tags=["Financial Data"])
+async def get_income_statement(
+    symbol: str,
+    periods: int = Query(8, description="Number of periods")
+):
+    """
+    Lấy Báo cáo kết quả kinh doanh
+    """
+    from src.data_collection.financial_data import FinancialDataCollector
+    
+    collector = FinancialDataCollector()
+    df = collector.get_income_statement(symbol, periods)
+    
+    if df.empty:
+        raise HTTPException(status_code=404, detail=f"Cannot get income statement for {symbol}")
+    
+    return {
+        "symbol": symbol.upper().replace('.VN', ''),
+        "count": len(df),
+        "data": df.to_dict(orient='records')
+    }
+
+
+@app.get("/api/financial/cash-flow/{symbol}", tags=["Financial Data"])
+async def get_cash_flow(
+    symbol: str,
+    periods: int = Query(8, description="Number of periods")
+):
+    """
+    Lấy Báo cáo lưu chuyển tiền tệ
+    """
+    from src.data_collection.financial_data import FinancialDataCollector
+    
+    collector = FinancialDataCollector()
+    df = collector.get_cash_flow(symbol, periods)
+    
+    if df.empty:
+        raise HTTPException(status_code=404, detail=f"Cannot get cash flow for {symbol}")
+    
+    return {
+        "symbol": symbol.upper().replace('.VN', ''),
+        "count": len(df),
+        "data": df.to_dict(orient='records')
+    }
+
+
+@app.get("/api/financial/dividends/{symbol}", tags=["Financial Data"])
+async def get_dividend_history(symbol: str):
+    """
+    Lấy lịch sử chi trả cổ tức
+    """
+    from src.data_collection.financial_data import FinancialDataCollector
+    
+    collector = FinancialDataCollector()
+    df = collector.get_dividend_history(symbol)
+    
+    return {
+        "symbol": symbol.upper().replace('.VN', ''),
+        "count": len(df),
+        "data": df.to_dict(orient='records') if not df.empty else []
+    }
+
+
+@app.get("/api/financial/peer-comparison/{symbol}", tags=["Financial Data"])
+async def get_peer_comparison(symbol: str):
+    """
+    So sánh với các công ty cùng ngành
+    """
+    from src.data_collection.financial_data import FinancialDataCollector
+    
+    collector = FinancialDataCollector()
+    df = collector.get_peer_comparison(symbol)
+    
+    return {
+        "symbol": symbol.upper().replace('.VN', ''),
+        "count": len(df),
+        "peers": df.to_dict(orient='records') if not df.empty else []
+    }
+
+
+@app.get("/api/financial/summary/{symbol}", tags=["Financial Data"])
+async def get_financial_summary(symbol: str):
+    """
+    Lấy tổng hợp dữ liệu tài chính
+    
+    Bao gồm: Định giá, Chỉ số tài chính, BCĐKT, Dòng tiền
+    """
+    from src.data_collection.financial_data import FinancialDataCollector
+    
+    collector = FinancialDataCollector()
+    summary = collector.get_financial_summary(symbol)
+    
+    if not summary:
+        raise HTTPException(status_code=404, detail=f"Cannot get financial summary for {symbol}")
+    
+    return summary
+
+
+@app.post("/api/financial/dcf-valuation", tags=["Financial Data"])
+async def calculate_dcf_valuation(
+    fcf: float = Query(..., description="Free Cash Flow hiện tại (tỷ VND)"),
+    growth_rate: float = Query(10, description="Tỷ lệ tăng trưởng FCF (%)"),
+    discount_rate: float = Query(12, description="Tỷ lệ chiết khấu/WACC (%)"),
+    terminal_growth: float = Query(3, description="Tỷ lệ tăng trưởng vĩnh viễn (%)"),
+    years: int = Query(10, description="Số năm dự báo"),
+    shares: float = Query(1000, description="Số cổ phiếu (triệu CP)")
+):
+    """
+    Tính giá trị nội tại theo DCF (Discounted Cash Flow)
+    """
+    from src.data_collection.financial_data import DCFValuation
+    
+    result = DCFValuation.calculate_intrinsic_value(
+        fcf=fcf,
+        growth_rate=growth_rate,
+        discount_rate=discount_rate,
+        terminal_growth=terminal_growth,
+        years=years,
+        shares_outstanding=shares
+    )
+    
+    return result
+
+
+@app.post("/api/financial/stock-screening", tags=["Financial Data"])
+async def screen_stocks(
+    exchange: str = Query("HOSE", description="Exchange: HOSE, HNX"),
+    pe_max: float = Query(None, description="P/E tối đa"),
+    pb_max: float = Query(None, description="P/B tối đa"),
+    roe_min: float = Query(None, description="ROE tối thiểu (%)"),
+    market_cap_min: float = Query(None, description="Vốn hóa tối thiểu (tỷ VND)")
+):
+    """
+    Lọc cổ phiếu theo tiêu chí tài chính
+    """
+    from src.data_collection.financial_data import FinancialDataCollector
+    
+    criteria = {'exchange': exchange}
+    if pe_max: criteria['pe_max'] = pe_max
+    if pb_max: criteria['pb_max'] = pb_max
+    if roe_min: criteria['roe_min'] = roe_min
+    if market_cap_min: criteria['market_cap_min'] = market_cap_min
+    
+    collector = FinancialDataCollector()
+    df = collector.screen_stocks(criteria)
+    
+    return {
+        "criteria": criteria,
+        "count": len(df),
+        "stocks": df.to_dict(orient='records') if not df.empty else []
+    }
+
+
+# --- Industry Data Endpoints ---
+
+@app.get("/api/industry/sectors", tags=["Industry Data"])
+async def get_all_sectors():
+    """
+    Lấy danh sách các ngành
+    """
+    from src.data_collection.industry_data import IndustryDataCollector
+    
+    collector = IndustryDataCollector()
+    
+    return {
+        "sectors": collector.get_all_sector_names(),
+        "vn_sectors": list(collector.VN_SECTORS.keys()),
+        "icb_sectors": collector.SECTORS
+    }
+
+
+@app.get("/api/industry/sector/{sector_name}", tags=["Industry Data"])
+async def get_sector_stocks(sector_name: str):
+    """
+    Lấy danh sách CP trong một ngành
+    """
+    from src.data_collection.industry_data import IndustryDataCollector
+    
+    collector = IndustryDataCollector()
+    stocks = collector.get_stocks_by_sector(sector_name)
+    
+    if not stocks:
+        raise HTTPException(status_code=404, detail=f"Sector '{sector_name}' not found")
+    
+    return {
+        "sector": sector_name,
+        "count": len(stocks),
+        "stocks": stocks
+    }
+
+
+@app.get("/api/industry/performance/{sector_name}", tags=["Industry Data"])
+async def get_sector_performance(
+    sector_name: str,
+    from_date: str = Query(..., description="Start date (YYYY-MM-DD)"),
+    to_date: str = Query(..., description="End date (YYYY-MM-DD)")
+):
+    """
+    Lấy hiệu suất ngành
+    """
+    from src.data_collection.industry_data import IndustryDataCollector
+    
+    collector = IndustryDataCollector()
+    df = collector.get_vn_sector_performance(sector_name, from_date, to_date)
+    
+    if df.empty:
+        raise HTTPException(status_code=404, detail=f"Cannot get performance for {sector_name}")
+    
+    return {
+        "sector": sector_name,
+        "from_date": from_date,
+        "to_date": to_date,
+        "count": len(df),
+        "stocks": df.to_dict(orient='records')
+    }
+
+
+@app.get("/api/industry/all-performance", tags=["Industry Data"])
+async def get_all_sectors_performance(
+    from_date: str = Query(..., description="Start date (YYYY-MM-DD)"),
+    to_date: str = Query(..., description="End date (YYYY-MM-DD)")
+):
+    """
+    Lấy hiệu suất tất cả các ngành
+    """
+    from src.data_collection.industry_data import IndustryDataCollector
+    
+    collector = IndustryDataCollector()
+    df = collector.get_all_sectors_performance(from_date, to_date)
+    
+    return {
+        "from_date": from_date,
+        "to_date": to_date,
+        "count": len(df),
+        "sectors": df.to_dict(orient='records') if not df.empty else []
+    }
+
+
+@app.get("/api/industry/market-breadth/{exchange}", tags=["Industry Data"])
+async def get_market_breadth(exchange: str = "HOSE"):
+    """
+    Lấy độ rộng thị trường
+    
+    Advances, Declines, Unchanged, Ceiling, Floor
+    """
+    from src.data_collection.industry_data import IndustryDataCollector
+    
+    collector = IndustryDataCollector()
+    data = collector.get_market_breadth(exchange.upper())
+    
+    return data
+
+
+@app.get("/api/industry/supply-demand/{exchange}", tags=["Industry Data"])
+async def get_supply_demand(exchange: str = "HOSE"):
+    """
+    Lấy dữ liệu cung cầu thị trường
+    """
+    from src.data_collection.industry_data import IndustryDataCollector
+    
+    collector = IndustryDataCollector()
+    data = collector.get_supply_demand(exchange.upper())
+    
+    return data
+
+
+@app.get("/api/industry/sector-rotation", tags=["Industry Data"])
+async def get_sector_rotation(periods: int = Query(4, description="Number of periods (weeks)")):
+    """
+    Phân tích sector rotation (dòng tiền luân chuyển)
+    """
+    from src.data_collection.industry_data import IndustryDataCollector
+    
+    collector = IndustryDataCollector()
+    analysis = collector.get_sector_rotation_analysis(periods)
+    
+    return analysis
+
+
+@app.post("/api/industry/comparison", tags=["Industry Data"])
+async def compare_stocks_in_industry(symbols: List[str]):
+    """
+    So sánh các công ty trong cùng ngành
+    
+    Body: ["VCB", "BID", "CTG", "TCB", "MBB"]
+    """
+    from src.data_collection.industry_data import IndustryDataCollector
+    
+    collector = IndustryDataCollector()
+    df = collector.get_industry_comparison(symbols)
+    
+    return {
+        "count": len(df),
+        "comparison": df.to_dict(orient='records') if not df.empty else []
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
     
