@@ -667,6 +667,463 @@ async def get_prices_date_range(
 
 
 # =====================================================
+# BẢNG GIÁ THEO NGÀY (Market Board by Date)
+# =====================================================
+
+@app.get("/api/market-board/dates", tags=["Market Board"])
+async def get_available_dates(
+    limit: int = Query(30, description="Số ngày gần nhất"),
+    db: Session = Depends(get_db)
+):
+    """
+    📅 Lấy danh sách các ngày có dữ liệu giao dịch
+    
+    Trả về danh sách các ngày có thể xem bảng giá.
+    Mỗi ngày là 1 trang riêng biệt.
+    """
+    # Lấy các ngày có dữ liệu
+    dates = db.query(StockPrice.date).distinct().order_by(
+        desc(StockPrice.date)
+    ).limit(limit).all()
+    
+    if not dates:
+        raise HTTPException(status_code=404, detail="Không có dữ liệu")
+    
+    date_list = [d[0].isoformat() for d in dates]
+    
+    return {
+        "status": "ok",
+        "total_dates": len(date_list),
+        "latest_date": date_list[0] if date_list else None,
+        "oldest_date": date_list[-1] if date_list else None,
+        "dates": date_list
+    }
+
+
+@app.get("/api/market-board/{date}", tags=["Market Board"])
+async def get_market_board_by_date(
+    date: str,
+    exchange: Optional[str] = Query(None, description="Sàn: HOSE, HNX, UPCOM"),
+    sort_by: str = Query("symbol", description="Sắp xếp: symbol, change_percent, volume, value"),
+    order: str = Query("asc", description="Thứ tự: asc, desc"),
+    db: Session = Depends(get_db)
+):
+    """
+    📊 Lấy BẢNG GIÁ của TẤT CẢ cổ phiếu trong MỘT NGÀY cụ thể
+    
+    - **date**: Ngày cần xem (YYYY-MM-DD)
+    - **exchange**: Lọc theo sàn (HOSE, HNX, UPCOM)
+    - **sort_by**: Cột sắp xếp
+    - **order**: Tăng/giảm dần
+    
+    Ví dụ:
+    - /api/market-board/2024-11-28 → Xem bảng giá ngày 28/11/2024
+    - /api/market-board/2024-11-29?sort_by=change_percent&order=desc → Top tăng mạnh nhất
+    """
+    from datetime import datetime as dt
+    
+    try:
+        target_date = dt.strptime(date, '%Y-%m-%d').date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Sai định dạng ngày. Dùng YYYY-MM-DD")
+    
+    # Query stocks với giá của ngày được chọn
+    query = db.query(Stock, StockPrice).join(
+        StockPrice, Stock.id == StockPrice.stock_id
+    ).filter(
+        StockPrice.date == target_date,
+        Stock.is_active == True
+    )
+    
+    if exchange:
+        query = query.filter(Stock.exchange == exchange.upper())
+    
+    results = query.all()
+    
+    if not results:
+        raise HTTPException(
+            status_code=404, 
+            detail=f"Không có dữ liệu bảng giá ngày {date}"
+        )
+    
+    # Build market board data
+    board_data = []
+    total_volume = 0
+    total_value = 0
+    advances = 0  # Số mã tăng
+    declines = 0  # Số mã giảm
+    unchanged = 0  # Số mã đứng giá
+    
+    for stock, price in results:
+        # Tính thay đổi giá
+        change = price.close - price.open
+        change_percent = (change / price.open * 100) if price.open > 0 else 0
+        
+        # Tính giá trị giao dịch (ước tính)
+        value = price.close * price.volume
+        
+        if change > 0:
+            advances += 1
+        elif change < 0:
+            declines += 1
+        else:
+            unchanged += 1
+        
+        total_volume += price.volume
+        total_value += value
+        
+        board_data.append({
+            "symbol": stock.symbol,
+            "name": stock.name,
+            "exchange": stock.exchange,
+            "sector": stock.sector,
+            "open": price.open,
+            "high": price.high,
+            "low": price.low,
+            "close": price.close,
+            "volume": price.volume,
+            "value": round(value, 0),
+            "change": round(change, 2),
+            "change_percent": round(change_percent, 2),
+        })
+    
+    # Sắp xếp
+    reverse = (order == "desc")
+    if sort_by == "change_percent":
+        board_data.sort(key=lambda x: x["change_percent"], reverse=reverse)
+    elif sort_by == "volume":
+        board_data.sort(key=lambda x: x["volume"], reverse=reverse)
+    elif sort_by == "value":
+        board_data.sort(key=lambda x: x["value"], reverse=reverse)
+    else:
+        board_data.sort(key=lambda x: x["symbol"], reverse=reverse)
+    
+    return {
+        "status": "ok",
+        "date": date,
+        "exchange": exchange or "ALL",
+        "summary": {
+            "total_stocks": len(board_data),
+            "advances": advances,
+            "declines": declines,
+            "unchanged": unchanged,
+            "total_volume": total_volume,
+            "total_value": total_value
+        },
+        "sort_by": sort_by,
+        "order": order,
+        "data": board_data
+    }
+
+
+@app.get("/api/market-board/{date}/top-gainers", tags=["Market Board"])
+async def get_top_gainers(
+    date: str,
+    limit: int = Query(10, description="Số lượng top"),
+    exchange: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    📈 Top cổ phiếu TĂNG GIÁ mạnh nhất trong ngày
+    """
+    from datetime import datetime as dt
+    
+    try:
+        target_date = dt.strptime(date, '%Y-%m-%d').date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Sai định dạng ngày")
+    
+    query = db.query(Stock, StockPrice).join(
+        StockPrice, Stock.id == StockPrice.stock_id
+    ).filter(
+        StockPrice.date == target_date,
+        Stock.is_active == True
+    )
+    
+    if exchange:
+        query = query.filter(Stock.exchange == exchange.upper())
+    
+    results = query.all()
+    
+    # Calculate change percent và sort
+    gainers = []
+    for stock, price in results:
+        change_percent = ((price.close - price.open) / price.open * 100) if price.open > 0 else 0
+        if change_percent > 0:
+            gainers.append({
+                "symbol": stock.symbol,
+                "name": stock.name,
+                "exchange": stock.exchange,
+                "close": price.close,
+                "change_percent": round(change_percent, 2),
+                "volume": price.volume
+            })
+    
+    gainers.sort(key=lambda x: x["change_percent"], reverse=True)
+    
+    return {
+        "date": date,
+        "exchange": exchange or "ALL",
+        "total": len(gainers),
+        "top_gainers": gainers[:limit]
+    }
+
+
+@app.get("/api/market-board/{date}/top-losers", tags=["Market Board"])
+async def get_top_losers(
+    date: str,
+    limit: int = Query(10, description="Số lượng top"),
+    exchange: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    📉 Top cổ phiếu GIẢM GIÁ mạnh nhất trong ngày
+    """
+    from datetime import datetime as dt
+    
+    try:
+        target_date = dt.strptime(date, '%Y-%m-%d').date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Sai định dạng ngày")
+    
+    query = db.query(Stock, StockPrice).join(
+        StockPrice, Stock.id == StockPrice.stock_id
+    ).filter(
+        StockPrice.date == target_date,
+        Stock.is_active == True
+    )
+    
+    if exchange:
+        query = query.filter(Stock.exchange == exchange.upper())
+    
+    results = query.all()
+    
+    # Calculate change percent và sort
+    losers = []
+    for stock, price in results:
+        change_percent = ((price.close - price.open) / price.open * 100) if price.open > 0 else 0
+        if change_percent < 0:
+            losers.append({
+                "symbol": stock.symbol,
+                "name": stock.name,
+                "exchange": stock.exchange,
+                "close": price.close,
+                "change_percent": round(change_percent, 2),
+                "volume": price.volume
+            })
+    
+    losers.sort(key=lambda x: x["change_percent"])  # Sort ascending (most negative first)
+    
+    return {
+        "date": date,
+        "exchange": exchange or "ALL",
+        "total": len(losers),
+        "top_losers": losers[:limit]
+    }
+
+
+@app.get("/api/market-board/{date}/top-volume", tags=["Market Board"])
+async def get_top_volume(
+    date: str,
+    limit: int = Query(10, description="Số lượng top"),
+    exchange: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    🔥 Top cổ phiếu có KHỐI LƯỢNG giao dịch cao nhất trong ngày
+    """
+    from datetime import datetime as dt
+    
+    try:
+        target_date = dt.strptime(date, '%Y-%m-%d').date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Sai định dạng ngày")
+    
+    query = db.query(Stock, StockPrice).join(
+        StockPrice, Stock.id == StockPrice.stock_id
+    ).filter(
+        StockPrice.date == target_date,
+        Stock.is_active == True
+    )
+    
+    if exchange:
+        query = query.filter(Stock.exchange == exchange.upper())
+    
+    results = query.all()
+    
+    # Sort by volume
+    volume_list = []
+    for stock, price in results:
+        change_percent = ((price.close - price.open) / price.open * 100) if price.open > 0 else 0
+        volume_list.append({
+            "symbol": stock.symbol,
+            "name": stock.name,
+            "exchange": stock.exchange,
+            "close": price.close,
+            "change_percent": round(change_percent, 2),
+            "volume": price.volume,
+            "value": round(price.close * price.volume, 0)
+        })
+    
+    volume_list.sort(key=lambda x: x["volume"], reverse=True)
+    
+    return {
+        "date": date,
+        "exchange": exchange or "ALL",
+        "total": len(volume_list),
+        "top_volume": volume_list[:limit]
+    }
+
+
+@app.get("/api/market-board/compare", tags=["Market Board"])
+async def compare_dates(
+    date1: str = Query(..., description="Ngày 1 (YYYY-MM-DD)"),
+    date2: str = Query(..., description="Ngày 2 (YYYY-MM-DD)"),
+    symbol: Optional[str] = Query(None, description="Mã CP cụ thể (optional)"),
+    db: Session = Depends(get_db)
+):
+    """
+    📊 So sánh bảng giá giữa 2 ngày
+    
+    Ví dụ: /api/market-board/compare?date1=2024-11-28&date2=2024-11-29
+    """
+    from datetime import datetime as dt
+    
+    try:
+        d1 = dt.strptime(date1, '%Y-%m-%d').date()
+        d2 = dt.strptime(date2, '%Y-%m-%d').date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Sai định dạng ngày")
+    
+    # Query cho cả 2 ngày
+    query1 = db.query(Stock, StockPrice).join(
+        StockPrice, Stock.id == StockPrice.stock_id
+    ).filter(
+        StockPrice.date == d1,
+        Stock.is_active == True
+    )
+    
+    query2 = db.query(Stock, StockPrice).join(
+        StockPrice, Stock.id == StockPrice.stock_id
+    ).filter(
+        StockPrice.date == d2,
+        Stock.is_active == True
+    )
+    
+    if symbol:
+        query1 = query1.filter(Stock.symbol == symbol.upper())
+        query2 = query2.filter(Stock.symbol == symbol.upper())
+    
+    results1 = {stock.symbol: price for stock, price in query1.all()}
+    results2 = {stock.symbol: price for stock, price in query2.all()}
+    
+    if not results1 or not results2:
+        raise HTTPException(status_code=404, detail="Không có dữ liệu")
+    
+    # Build comparison
+    comparison = []
+    for sym in results1.keys():
+        if sym in results2:
+            p1 = results1[sym]
+            p2 = results2[sym]
+            
+            price_change = p2.close - p1.close
+            price_change_pct = (price_change / p1.close * 100) if p1.close > 0 else 0
+            volume_change = p2.volume - p1.volume
+            volume_change_pct = (volume_change / p1.volume * 100) if p1.volume > 0 else 0
+            
+            comparison.append({
+                "symbol": sym,
+                "date1_close": p1.close,
+                "date2_close": p2.close,
+                "price_change": round(price_change, 2),
+                "price_change_percent": round(price_change_pct, 2),
+                "date1_volume": p1.volume,
+                "date2_volume": p2.volume,
+                "volume_change": volume_change,
+                "volume_change_percent": round(volume_change_pct, 2)
+            })
+    
+    # Sort by price change
+    comparison.sort(key=lambda x: x["price_change_percent"], reverse=True)
+    
+    return {
+        "date1": date1,
+        "date2": date2,
+        "total_stocks": len(comparison),
+        "comparison": comparison
+    }
+
+
+@app.get("/api/market-board/{date}/export", tags=["Market Board"])
+async def export_market_board(
+    date: str,
+    format: str = Query("json", description="Định dạng: json, csv"),
+    db: Session = Depends(get_db)
+):
+    """
+    📁 Export bảng giá của ngày ra file (JSON hoặc CSV)
+    """
+    from datetime import datetime as dt
+    from fastapi.responses import Response
+    
+    try:
+        target_date = dt.strptime(date, '%Y-%m-%d').date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Sai định dạng ngày")
+    
+    results = db.query(Stock, StockPrice).join(
+        StockPrice, Stock.id == StockPrice.stock_id
+    ).filter(
+        StockPrice.date == target_date,
+        Stock.is_active == True
+    ).all()
+    
+    if not results:
+        raise HTTPException(status_code=404, detail=f"Không có dữ liệu ngày {date}")
+    
+    board_data = []
+    for stock, price in results:
+        change_percent = ((price.close - price.open) / price.open * 100) if price.open > 0 else 0
+        board_data.append({
+            "symbol": stock.symbol,
+            "name": stock.name,
+            "exchange": stock.exchange,
+            "open": price.open,
+            "high": price.high,
+            "low": price.low,
+            "close": price.close,
+            "volume": price.volume,
+            "change_percent": round(change_percent, 2)
+        })
+    
+    board_data.sort(key=lambda x: x["symbol"])
+    
+    if format == "csv":
+        import csv
+        import io
+        
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=board_data[0].keys())
+        writer.writeheader()
+        writer.writerows(board_data)
+        
+        return Response(
+            content=output.getvalue(),
+            media_type="text/csv",
+            headers={
+                "Content-Disposition": f"attachment; filename=market_board_{date}.csv"
+            }
+        )
+    
+    return {
+        "date": date,
+        "total": len(board_data),
+        "data": board_data
+    }
+
+
+# =====================================================
 # TECHNICAL INDICATORS ENDPOINTS
 # =====================================================
 
