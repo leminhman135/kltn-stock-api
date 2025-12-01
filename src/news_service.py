@@ -127,12 +127,12 @@ class NewsService:
         "CafeF": "https://cafef.vn/rss/chung-khoan.rss",
         "CafeF_DN": "https://cafef.vn/rss/doanh-nghiep.rss",
         "CafeF_TaiChinh": "https://cafef.vn/rss/tai-chinh-ngan-hang.rss",
-        "VnExpress_CK": "https://vnexpress.net/rss/kinh-doanh/chung-khoan.rss",
-        "VnExpress_DN": "https://vnexpress.net/rss/kinh-doanh/doanh-nghiep.rss",
         "VnEconomy": "https://vneconomy.vn/chung-khoan.rss",
         "ThanhNien": "https://thanhnien.vn/rss/tai-chinh-kinh-doanh.rss",
         "TuoiTre": "https://tuoitre.vn/rss/kinh-doanh.rss",
         "VTV": "https://vtv.vn/trong-nuoc.rss",
+        "NguoiLaoDong": "https://nld.com.vn/kinh-te.rss",
+        "DanTri": "https://dantri.com.vn/rss/kinh-doanh.rss",
     }
     
     # Mapping mã CK -> từ khóa
