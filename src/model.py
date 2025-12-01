@@ -2,17 +2,61 @@
 """
 Stock Price Prediction using Machine Learning
 Includes: Linear Regression, Random Forest, Gradient Boosting
-With: RSI, MACD, Bollinger Bands, Mean Reversion
+With: RSI, MACD, Bollinger Bands, Mean Reversion, News Sentiment
 """
 
+import os
 import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
 import logging
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def get_sentiment_score(symbol: str) -> Optional[Dict]:
+    """
+    Lấy sentiment score từ database cho mã cổ phiếu
+    Returns: {'score': float, 'positive': int, 'negative': int, 'neutral': int, 'total': int}
+    """
+    try:
+        import psycopg2
+        db_url = os.getenv('DATABASE_URL')
+        if not db_url:
+            return None
+        
+        conn = psycopg2.connect(db_url)
+        with conn.cursor() as cur:
+            # Lấy sentiment của 7 ngày gần nhất
+            cur.execute("""
+                SELECT 
+                    AVG(sentiment_score) as avg_score,
+                    COUNT(*) FILTER (WHERE sentiment = 'positive') as positive,
+                    COUNT(*) FILTER (WHERE sentiment = 'negative') as negative,
+                    COUNT(*) FILTER (WHERE sentiment = 'neutral') as neutral,
+                    COUNT(*) as total
+                FROM analyzed_news
+                WHERE (symbol = %s OR symbol = 'MARKET')
+                AND analyzed_at >= NOW() - INTERVAL '7 days'
+            """, (symbol,))
+            row = cur.fetchone()
+            
+            if row and row[4] > 0:  # Có ít nhất 1 tin
+                conn.close()
+                return {
+                    'score': float(row[0]) if row[0] else 0.0,
+                    'positive': row[1] or 0,
+                    'negative': row[2] or 0,
+                    'neutral': row[3] or 0,
+                    'total': row[4] or 0
+                }
+        conn.close()
+        return None
+    except Exception as e:
+        logger.debug(f"Sentiment fetch error: {e}")
+        return None
 
 # Try import sklearn
 try:
@@ -288,11 +332,17 @@ class StockMLModel:
             return {'success': False, 'error': str(e)}
     
     def predict(self, df: pd.DataFrame, steps: int = 7, model_type: str = 'ensemble') -> Dict:
-        """Make predictions with mean reversion and uncertainty"""
+        """Make predictions with mean reversion, uncertainty and sentiment"""
         if not self.is_trained:
             return quick_predict(df['close'].tolist(), steps)
         
         try:
+            # Lấy sentiment data cho symbol này
+            self._sentiment_data = get_sentiment_score(self.symbol)
+            if self._sentiment_data:
+                logger.info(f"📰 Sentiment for {self.symbol}: score={self._sentiment_data['score']:.2f}, "
+                           f"pos={self._sentiment_data['positive']}, neg={self._sentiment_data['negative']}")
+            
             data = df.copy().sort_values('date').reset_index(drop=True)
             close = data['close'].values
             high = data['high'].values if 'high' in data.columns else close
@@ -390,6 +440,20 @@ class StockMLModel:
                 # Final clip - max 1% move per day after all adjustments
                 adjusted_return = np.clip(adjusted_return, -0.01, 0.01)
                 
+                # Apply sentiment adjustment (chỉ áp dụng cho step đầu tiên)
+                if step == 0 and hasattr(self, '_sentiment_data') and self._sentiment_data:
+                    sentiment = self._sentiment_data
+                    sentiment_score = sentiment.get('score', 0)
+                    news_count = sentiment.get('total', 0)
+                    
+                    # Chỉ áp dụng nếu có đủ tin (>=3)
+                    if news_count >= 3:
+                        # Sentiment adjustment: tối đa ±0.5% ảnh hưởng
+                        # sentiment_score từ -1 đến 1
+                        sentiment_adjustment = sentiment_score * 0.005  # Max 0.5%
+                        adjusted_return += sentiment_adjustment
+                        adjusted_return = np.clip(adjusted_return, -0.015, 0.015)  # Re-clip
+                
                 next_price = current_price * (1 + adjusted_return)
                 
                 # HARD LIMIT: Giới hạn tổng mức thay đổi tối đa ±15% so với giá gốc
@@ -451,7 +515,8 @@ class StockMLModel:
                 'rsi': round(current_rsi, 1),
                 'bollinger_position': round(current_bb, 2),
                 'metrics': {k: v for k, v in self.metrics.items() if k != 'baseline'},
-                'baseline_accuracy': baseline_acc
+                'baseline_accuracy': baseline_acc,
+                'sentiment': self._sentiment_data  # Thêm sentiment vào response
             }
         except Exception as e:
             logger.error(f"Prediction error: {e}")
