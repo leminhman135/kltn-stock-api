@@ -333,10 +333,18 @@
                     <div class="card" style="margin-bottom:20px;">
                         <div class="card-header">
                             <div class="card-title"><i class="fas fa-newspaper"></i> Phân tích Tin tức & Sentiment</div>
-                            <div style="display:flex;gap:12px;align-items:center;">
+                            <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
                                 <select id="newsSymbol" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-primary);color:var(--text-primary);font-size:0.875rem;">
                                     <option value="">-- Tất cả tin tức --</option>
                                 </select>
+                                <select id="newsSentimentFilter" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-primary);color:var(--text-primary);font-size:0.875rem;">
+                                    <option value="all">📊 Tất cả sentiment</option>
+                                    <option value="positive">🟢 Tích cực</option>
+                                    <option value="neutral">⚪ Trung lập</option>
+                                    <option value="negative">🔴 Tiêu cực</option>
+                                </select>
+                                <input type="date" id="newsDateFilter" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-primary);color:var(--text-primary);font-size:0.875rem;" title="Lọc theo ngày">
+                                <button class="btn" onclick="clearNewsFilters()" style="padding:8px 12px;background:var(--bg-secondary);border:1px solid var(--border);"><i class="fas fa-times"></i> Xóa lọc</button>
                                 <button class="btn btn-primary" onclick="loadNews()"><i class="fas fa-sync"></i> Cập nhật</button>
                             </div>
                         </div>
@@ -1004,11 +1012,24 @@
                     opt.textContent = `${s.symbol} - ${s.name || ''}`;
                     select.appendChild(opt);
                 });
+                
+                // Add event listeners for filters
+                document.getElementById('newsSentimentFilter').addEventListener('change', loadNews);
+                document.getElementById('newsDateFilter').addEventListener('change', loadNews);
             }
+        }
+
+        // Clear news filters
+        function clearNewsFilters() {
+            document.getElementById('newsSentimentFilter').value = 'all';
+            document.getElementById('newsDateFilter').value = '';
+            loadNews();
         }
 
         async function loadNews() {
             const symbol = document.getElementById('newsSymbol').value;
+            const sentimentFilter = document.getElementById('newsSentimentFilter').value;
+            const dateFilter = document.getElementById('newsDateFilter').value;
             const newsList = document.getElementById('newsList');
             const summaryDiv = document.getElementById('sentimentSummary');
             
@@ -1043,10 +1064,39 @@
                         summaryDiv.style.display = 'none';
                     }
                     
-                    // Render news list
-                    const news = data.news || [];
+                    // Get and filter news list
+                    let news = data.news || [];
+                    
+                    // Apply sentiment filter
+                    if (sentimentFilter && sentimentFilter !== 'all') {
+                        news = news.filter(n => n.sentiment === sentimentFilter);
+                    }
+                    
+                    // Apply date filter
+                    if (dateFilter) {
+                        const filterDate = new Date(dateFilter).toDateString();
+                        news = news.filter(n => {
+                            // Parse published_at format (e.g., "28/11/2025 10:30" or "2025-11-28")
+                            let newsDate;
+                            if (n.published_at.includes('/')) {
+                                const [datePart] = n.published_at.split(' ');
+                                const [day, month, year] = datePart.split('/');
+                                newsDate = new Date(year, month - 1, day);
+                            } else {
+                                newsDate = new Date(n.published_at);
+                            }
+                            return newsDate.toDateString() === filterDate;
+                        });
+                    }
+                    
+                    // Show filter info
+                    const filterInfo = [];
+                    if (sentimentFilter !== 'all') filterInfo.push(sentimentFilter === 'positive' ? 'tích cực' : sentimentFilter === 'negative' ? 'tiêu cực' : 'trung lập');
+                    if (dateFilter) filterInfo.push(new Date(dateFilter).toLocaleDateString('vi-VN'));
+                    
                     if (news.length === 0) {
-                        newsList.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-secondary);"><i class="fas fa-inbox" style="font-size:3rem;margin-bottom:16px;opacity:0.3;"></i><p>Không có tin tức</p></div>';
+                        const filterText = filterInfo.length ? ` (lọc: ${filterInfo.join(', ')})` : '';
+                        newsList.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-secondary);"><i class="fas fa-inbox" style="font-size:3rem;margin-bottom:16px;opacity:0.3;"></i><p>Không có tin tức${filterText}</p><button class="btn" onclick="clearNewsFilters()" style="margin-top:12px;">Xóa bộ lọc</button></div>`;
                         return;
                     }
                     
@@ -1067,7 +1117,8 @@
                         </a>
                     `).join('');
                     
-                    toast(`✓ Đã tải ${news.length} tin tức`);
+                    const filterText = filterInfo.length ? ` (${filterInfo.join(', ')})` : '';
+                    toast(`✓ Đã tải ${news.length} tin tức${filterText}`);
                 } else {
                     throw new Error(data.detail || 'Không thể tải tin tức');
                 }
