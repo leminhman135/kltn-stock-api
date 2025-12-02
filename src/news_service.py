@@ -122,24 +122,26 @@ class SentimentAnalyzer:
 class NewsService:
     """Service thu thập tin tức THẬT từ nhiều nguồn RSS và Web"""
     
-    # RSS Feeds chứng khoán Việt Nam - Nguồn uy tín
+    # RSS Feeds chứng khoán Việt Nam - Nguồn uy tín (Updated 2024-12-03)
+    # Chỉ giữ lại các feeds đang hoạt động ổn định
     RSS_FEEDS = {
-        # Báo tài chính chuyên ngành
-        "CafeF": "https://cafef.vn/rss/chung-khoan.rss",
-        "CafeF_DN": "https://cafef.vn/rss/doanh-nghiep.rss",
-        "CafeF_TaiChinh": "https://cafef.vn/rss/tai-chinh-ngan-hang.rss",
-        "VnEconomy": "https://vneconomy.vn/chung-khoan.rss",
-        "VnEconomy_DN": "https://vneconomy.vn/doanh-nghiep.rss",
-        # "TBKTSG": "https://thesaigontimes.vn/rss/chung-khoan.rss",  # Tạm tắt - lỗi XML
+        # Báo tài chính chuyên ngành - WORKING
+        "VnEconomy_ChungKhoan": "https://vneconomy.vn/chung-khoan.rss",
+        "VnEconomy_DoanhNghiep": "https://vneconomy.vn/doanh-nghiep.rss",
+        "VnEconomy_TaiChinh": "https://vneconomy.vn/tai-chinh-ngan-hang.rss",
         
-        # Báo chính thống
-        "VTV_KinhTe": "https://vtv.vn/kinh-te.rss",
-        "VietnamNet_KinhTe": "https://vietnamnet.vn/rss/kinh-doanh.rss",
-        "ThanhNien_TaiChinh": "https://thanhnien.vn/rss/tai-chinh-kinh-doanh.rss",
+        # Báo chính thống - WORKING
         "TuoiTre_KinhDoanh": "https://tuoitre.vn/rss/kinh-doanh.rss",
+        "ThanhNien_KinhTe": "https://thanhnien.vn/rss/kinh-te.rss",
+        "VietnamNet_KinhDoanh": "https://vietnamnet.vn/rss/kinh-doanh.rss",
+        "VnExpress_KinhDoanh": "https://vnexpress.net/rss/kinh-doanh.rss",
+        "DanTri_KinhDoanh": "https://dantri.com.vn/kinh-doanh.rss",
         
-        # Thông tấn xã
-        # "TTXVN": "https://bnews.vn/rss/chung-khoan.rss",  # Tạm tắt - lỗi SSL
+        # Các feeds đã tắt/lỗi (để tham khảo):
+        # "CafeF": "https://cafef.vn/rss/chung-khoan.rss",  # 404 Error - đổi cấu trúc
+        # "VTV": "https://vtv.vn/kinh-te.rss",  # 404 Error
+        # "VietStock": "https://vietstock.vn/api/rss/cate/2",  # XML parse error
+        # "NDH": "https://ndh.vn/rss/tai-chinh.rss",  # Connection timeout
     }
     
     # Mapping mã CK -> từ khóa
@@ -347,62 +349,62 @@ class NewsService:
         
         return news[:limit]
     
-    def scrape_cafef_api(self, limit: int = 15) -> List[NewsArticle]:
-        """Lấy tin từ CafeF qua API"""
+    def scrape_cafef_web(self, limit: int = 10) -> List[NewsArticle]:
+        """Scrape tin từ CafeF website (backup khi RSS không hoạt động)"""
         news = []
-        try:
-            # CafeF có API trả về JSON
-            url = "https://cafef.vn/Ajax/LoadListNewsHome.aspx"
-            params = {
-                "CategoryId": "6",  # Chứng khoán
-                "PageIndex": "1",
-                "PageSize": str(limit),
-                "PcView": "true"
-            }
+        if not HAS_BS4:
+            return news
             
-            response = requests.get(url, params=params, headers=self.headers, timeout=10)
+        try:
+            # Scrape trang chứng khoán CafeF
+            url = "https://cafef.vn/chung-khoan.chn"
+            response = requests.get(url, headers=self.headers, timeout=15)
             
             if response.status_code == 200:
-                # Có thể là HTML hoặc JSON
-                if HAS_BS4:
-                    soup = BeautifulSoup(response.content, 'html.parser')
-                    items = soup.select('li, .item, .news-item')
-                    
-                    for item in items[:limit]:
-                        try:
-                            title_el = item.select_one('a[title], h3 a, .title a')
-                            if not title_el:
-                                continue
-                            
-                            title = title_el.get('title') or title_el.get_text(strip=True)
-                            link = title_el.get('href', '')
-                            
-                            if not title or len(title) < 10:
-                                continue
-                                
-                            if link and not link.startswith('http'):
-                                link = 'https://cafef.vn' + link
-                            
-                            desc_el = item.select_one('.sapo, .summary, p')
-                            summary = desc_el.get_text(strip=True) if desc_el else title[:200]
-                            
-                            sentiment, score, impact = self.analyzer.analyze(title + " " + summary)
-                            
-                            news.append(NewsArticle(
-                                title=title,
-                                summary=summary[:300],
-                                url=link,
-                                source="CafeF",
-                                published_at=datetime.now().strftime("%Y-%m-%d %H:%M"),
-                                sentiment=sentiment,
-                                sentiment_score=score,
-                                impact_prediction=impact
-                            ))
-                        except:
+                soup = BeautifulSoup(response.content, 'html.parser')
+                
+                # CafeF structure: tìm các article items
+                articles = soup.select('.tlitem, .item-news, .box-category-item')
+                
+                for article in articles[:limit]:
+                    try:
+                        # Tìm title và link
+                        title_link = article.select_one('h3 a, .title a, a[data-type="headline"]')
+                        if not title_link:
                             continue
-                            
+                        
+                        title = title_link.get('title') or title_link.get_text(strip=True)
+                        link = title_link.get('href', '')
+                        
+                        if not title or len(title) < 15:
+                            continue
+                        
+                        # Fix relative URLs
+                        if link and not link.startswith('http'):
+                            link = 'https://cafef.vn' + link
+                        
+                        # Tìm summary
+                        summary_el = article.select_one('.sapo, .summary, .box-category-sapo, p')
+                        summary = summary_el.get_text(strip=True) if summary_el else title[:200]
+                        
+                        # Sentiment analysis
+                        sentiment, score, impact = self.analyzer.analyze(title + " " + summary)
+                        
+                        news.append(NewsArticle(
+                            title=title.strip(),
+                            summary=summary[:350],
+                            url=link,
+                            source="CafeF",
+                            published_at=datetime.now().strftime("%Y-%m-%d %H:%M"),
+                            sentiment=sentiment,
+                            sentiment_score=score,
+                            impact_prediction=impact
+                        ))
+                    except Exception as e:
+                        continue
+                        
         except Exception as e:
-            print(f"Error scraping CafeF: {e}")
+            print(f"CafeF scraping error: {e}")
         
         return news
     
@@ -442,12 +444,12 @@ class NewsService:
                 print(f"Error with {feed_name}: {e}")
                 continue
         
-        # 2. Thử scrape thêm từ CafeF API
+        # 2. Thử scrape thêm từ CafeF Web (vì RSS đã tắt)
         try:
-            cafef_news = self.scrape_cafef_api(limit=10)
+            cafef_news = self.scrape_cafef_web(limit=10)
             all_news.extend(cafef_news)
-        except:
-            pass
+        except Exception as e:
+            print(f"CafeF scraping failed: {e}")
         
         # 3. Loại bỏ trùng lặp theo title
         seen_titles = set()
