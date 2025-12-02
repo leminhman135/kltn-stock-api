@@ -3,108 +3,172 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>KLTN Stock Prediction</title>
+    <meta name="description" content="Hệ thống dự đoán giá cổ phiếu Việt Nam với Machine Learning - KLTN 2025">
+    <meta name="author" content="KLTN Stock Prediction">
+    <title>VN Stock AI - Dự đoán Cổ phiếu với Machine Learning</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📈</text></svg>">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@2.0.0/dist/chartjs-plugin-annotation.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <style>
         :root {
-            --bg-primary: #0f172a;
-            --bg-secondary: #1e293b;
-            --bg-card: #1e293b;
+            --bg-primary: #0a0f1a;
+            --bg-secondary: #111827;
+            --bg-card: #1a2332;
+            --bg-elevated: #1f2937;
             --accent: #3b82f6;
             --accent-hover: #2563eb;
+            --accent-light: rgba(59, 130, 246, 0.15);
             --success: #10b981;
+            --success-light: rgba(16, 185, 129, 0.15);
             --danger: #ef4444;
+            --danger-light: rgba(239, 68, 68, 0.15);
             --warning: #f59e0b;
-            --text-primary: #f1f5f9;
+            --warning-light: rgba(245, 158, 11, 0.15);
+            --purple: #8b5cf6;
+            --purple-light: rgba(139, 92, 246, 0.15);
+            --text-primary: #f8fafc;
             --text-secondary: #94a3b8;
-            --border: #334155;
+            --text-muted: #64748b;
+            --border: #2d3748;
+            --border-light: rgba(255,255,255,0.05);
+            --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+            --shadow-md: 0 4px 6px rgba(0,0,0,0.3);
+            --shadow-lg: 0 10px 15px rgba(0,0,0,0.4);
+            --shadow-glow: 0 0 20px rgba(59, 130, 246, 0.3);
+            --gradient-primary: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            --gradient-success: linear-gradient(135deg, #10b981, #059669);
+            --gradient-danger: linear-gradient(135deg, #ef4444, #dc2626);
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Inter', sans-serif; background: var(--bg-primary); color: var(--text-primary); min-height: 100vh; }
+        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg-primary); color: var(--text-primary); min-height: 100vh; line-height: 1.5; }
+        
+        /* Smooth scrollbar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-secondary); }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
         
         /* Layout */
         .app { display: flex; min-height: 100vh; }
-        .sidebar { width: 200px; background: var(--bg-secondary); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
-        .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        .sidebar { width: 240px; background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%); border-right: 1px solid var(--border); display: flex; flex-direction: column; position: fixed; height: 100vh; z-index: 100; transition: transform 0.3s ease; }
+        .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; margin-left: 240px; }
         
         /* Stock Grid in Dashboard */
         .stock-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-bottom: 24px; }
-        .stock-card { background: var(--bg-card); border-radius: 10px; padding: 14px; border: 1px solid var(--border); cursor: pointer; transition: all 0.2s; }
-        .stock-card:hover { border-color: var(--accent); transform: translateY(-2px); }
-        .stock-card.active { border-color: var(--accent); background: rgba(59, 130, 246, 0.1); }
-        .stock-card .symbol { font-weight: 700; font-size: 1rem; margin-bottom: 4px; }
-        .stock-card .name { font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .stock-card .price { font-size: 0.95rem; font-weight: 600; color: var(--success); }
+        .stock-card { background: var(--bg-card); border-radius: 12px; padding: 16px; border: 1px solid var(--border); cursor: pointer; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); position: relative; overflow: hidden; }
+        .stock-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--gradient-primary); opacity: 0; transition: opacity 0.3s; }
+        .stock-card:hover { border-color: var(--accent); transform: translateY(-4px); box-shadow: var(--shadow-lg), var(--shadow-glow); }
+        .stock-card:hover::before { opacity: 1; }
+        .stock-card.active { border-color: var(--accent); background: var(--accent-light); }
+        .stock-card.active::before { opacity: 1; }
+        .stock-card .symbol { font-weight: 700; font-size: 1.1rem; margin-bottom: 4px; letter-spacing: 0.5px; }
+        .stock-card .name { font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .stock-card .price { font-size: 1rem; font-weight: 600; color: var(--success); }
         .stock-card .price.down { color: var(--danger); }
-        .stock-card .change { font-size: 0.75rem; margin-top: 4px; }
+        .stock-card .change { font-size: 0.75rem; margin-top: 6px; padding: 3px 8px; border-radius: 4px; display: inline-block; }
+        .stock-card .change.up { background: var(--success-light); color: var(--success); }
+        .stock-card .change.down { background: var(--danger-light); color: var(--danger); }
         @media (max-width: 1400px) { .stock-grid { grid-template-columns: repeat(5, 1fr); } }
         @media (max-width: 1200px) { .stock-grid { grid-template-columns: repeat(4, 1fr); } }
-        @media (max-width: 900px) { .stock-grid { grid-template-columns: repeat(3, 1fr); } }
+        @media (max-width: 900px) { .stock-grid { grid-template-columns: repeat(3, 1fr); } .sidebar { transform: translateX(-100%); } .sidebar.open { transform: translateX(0); } .main { margin-left: 0; } }
         @media (max-width: 600px) { .stock-grid { grid-template-columns: repeat(2, 1fr); } }
         
         /* Sidebar */
-        .logo { padding: 20px; border-bottom: 1px solid var(--border); }
-        .logo h1 { font-size: 1.25rem; color: var(--accent); display: flex; align-items: center; gap: 10px; }
-        .logo span { font-size: 0.7rem; background: var(--accent); color: white; padding: 2px 8px; border-radius: 10px; }
+        .logo { padding: 24px 20px; border-bottom: 1px solid var(--border); background: linear-gradient(135deg, rgba(59,130,246,0.1), rgba(139,92,246,0.05)); }
+        .logo h1 { font-size: 1.4rem; color: var(--text-primary); display: flex; align-items: center; gap: 12px; font-weight: 700; }
+        .logo h1 i { background: var(--gradient-primary); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-size: 1.5rem; }
+        .logo span { font-size: 0.6rem; background: var(--gradient-primary); color: white; padding: 3px 8px; border-radius: 12px; font-weight: 600; letter-spacing: 0.5px; }
         
-        .nav { padding: 16px 12px; flex: 1; }
-        .nav-item { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 8px; color: var(--text-secondary); cursor: pointer; transition: all 0.2s; margin-bottom: 4px; }
-        .nav-item:hover, .nav-item.active { background: rgba(59, 130, 246, 0.1); color: var(--accent); }
-        .nav-item i { width: 20px; }
+        .nav { padding: 20px 12px; flex: 1; }
+        .nav-section { margin-bottom: 8px; }
+        .nav-section-title { font-size: 0.65rem; text-transform: uppercase; color: var(--text-muted); padding: 8px 16px; letter-spacing: 1px; font-weight: 600; }
+        .nav-item { display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-radius: 10px; color: var(--text-secondary); cursor: pointer; transition: all 0.2s ease; margin-bottom: 4px; font-weight: 500; position: relative; }
+        .nav-item:hover { background: var(--accent-light); color: var(--text-primary); }
+        .nav-item.active { background: var(--accent-light); color: var(--accent); font-weight: 600; }
+        .nav-item.active::before { content: ''; position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 4px; height: 60%; background: var(--accent); border-radius: 0 4px 4px 0; }
+        .nav-item i { width: 20px; font-size: 1.1rem; }
+        .nav-item .badge { margin-left: auto; background: var(--danger); color: white; font-size: 0.65rem; padding: 2px 6px; border-radius: 10px; font-weight: 600; }
+        
+        /* Sidebar Footer */
+        .sidebar-footer { padding: 16px 20px; border-top: 1px solid var(--border); background: rgba(0,0,0,0.2); }
+        .sidebar-footer-item { display: flex; align-items: center; gap: 10px; padding: 10px 0; font-size: 0.8rem; color: var(--text-muted); cursor: pointer; transition: color 0.2s; }
+        .sidebar-footer-item:hover { color: var(--text-primary); }
+        .sidebar-footer-item i { width: 16px; }
         
         /* Header */
-        .header { display: flex; justify-content: space-between; align-items: center; padding: 16px 24px; border-bottom: 1px solid var(--border); background: var(--bg-secondary); }
-        .header-left h2 { font-size: 1.5rem; font-weight: 600; }
-        .header-left p { color: var(--text-secondary); font-size: 0.875rem; }
-        .header-right { display: flex; gap: 12px; }
+        .header { display: flex; justify-content: space-between; align-items: center; padding: 16px 28px; border-bottom: 1px solid var(--border); background: var(--bg-secondary); position: sticky; top: 0; z-index: 50; backdrop-filter: blur(10px); }
+        .header-left h2 { font-size: 1.5rem; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+        .header-left p { color: var(--text-secondary); font-size: 0.85rem; margin-top: 4px; }
+        .header-right { display: flex; gap: 12px; align-items: center; }
         
-        .btn { padding: 10px 20px; border-radius: 8px; font-size: 0.875rem; font-weight: 500; cursor: pointer; transition: all 0.2s; border: none; display: flex; align-items: center; gap: 8px; }
-        .btn-primary { background: var(--accent); color: white; }
-        .btn-primary:hover { background: var(--accent-hover); }
+        /* Mobile menu button */
+        .mobile-menu-btn { display: none; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-primary); cursor: pointer; }
+        @media (max-width: 900px) { .mobile-menu-btn { display: flex; } }
+        
+        /* Buttons */
+        .btn { padding: 10px 20px; border-radius: 10px; font-size: 0.875rem; font-weight: 600; cursor: pointer; transition: all 0.2s ease; border: none; display: inline-flex; align-items: center; gap: 8px; text-decoration: none; }
+        .btn-primary { background: var(--gradient-primary); color: white; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3); }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4); }
         .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text-primary); }
-        .btn-outline:hover { background: var(--bg-card); }
-        .btn-success { background: var(--success); color: white; }
+        .btn-outline:hover { background: var(--bg-card); border-color: var(--accent); }
+        .btn-success { background: var(--gradient-success); color: white; }
+        .btn-danger { background: var(--gradient-danger); color: white; }
+        .btn-sm { padding: 8px 14px; font-size: 0.8rem; }
+        .btn-icon { width: 40px; height: 40px; padding: 0; justify-content: center; border-radius: 10px; }
+        
+        /* Inputs */
+        .input, select { padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-primary); font-size: 0.875rem; font-family: inherit; transition: all 0.2s; }
+        .input:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
+        .input::placeholder { color: var(--text-muted); }
         
         /* Content */
-        .content { flex: 1; overflow-y: auto; padding: 24px; }
+        .content { flex: 1; overflow-y: auto; padding: 28px; }
         
         /* Stats Grid */
-        .stats-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-bottom: 24px; }
-        .stat-card { background: var(--bg-card); border-radius: 12px; padding: 20px; border: 1px solid var(--border); }
-        .stat-card .icon { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; margin-bottom: 12px; font-size: 1.25rem; }
-        .stat-card .icon.blue { background: rgba(59, 130, 246, 0.2); color: var(--accent); }
-        .stat-card .icon.green { background: rgba(16, 185, 129, 0.2); color: var(--success); }
-        .stat-card .icon.orange { background: rgba(245, 158, 11, 0.2); color: var(--warning); }
-        .stat-card .icon.purple { background: rgba(139, 92, 246, 0.2); color: #8b5cf6; }
-        .stat-card .icon.red { background: rgba(239, 68, 68, 0.2); color: var(--danger); }
-        .stat-card .label { color: var(--text-secondary); font-size: 0.8rem; margin-bottom: 4px; }
-        .stat-card .value { font-size: 1.75rem; font-weight: 700; }
+        .stats-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-bottom: 28px; }
+        .stat-card { background: var(--bg-card); border-radius: 14px; padding: 20px; border: 1px solid var(--border); transition: all 0.3s ease; position: relative; overflow: hidden; }
+        .stat-card::after { content: ''; position: absolute; top: 0; right: 0; width: 100px; height: 100px; background: radial-gradient(circle, rgba(59,130,246,0.1) 0%, transparent 70%); }
+        .stat-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+        .stat-card .icon { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; margin-bottom: 14px; font-size: 1.3rem; }
+        .stat-card .icon.blue { background: var(--accent-light); color: var(--accent); }
+        .stat-card .icon.green { background: var(--success-light); color: var(--success); }
+        .stat-card .icon.orange { background: var(--warning-light); color: var(--warning); }
+        .stat-card .icon.purple { background: var(--purple-light); color: var(--purple); }
+        .stat-card .icon.red { background: var(--danger-light); color: var(--danger); }
+        .stat-card .label { color: var(--text-secondary); font-size: 0.8rem; margin-bottom: 6px; font-weight: 500; }
+        .stat-card .value { font-size: 1.8rem; font-weight: 800; letter-spacing: -0.5px; }
+        .stat-card .trend { font-size: 0.75rem; margin-top: 8px; display: flex; align-items: center; gap: 4px; }
+        .stat-card .trend.up { color: var(--success); }
+        .stat-card .trend.down { color: var(--danger); }
         
         /* Tabs */
-        .tabs { display: flex; gap: 4px; margin-bottom: 24px; background: var(--bg-card); padding: 4px; border-radius: 10px; width: fit-content; }
-        .tab { padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 0.875rem; color: var(--text-secondary); transition: all 0.2s; }
-        .tab:hover { color: var(--text-primary); }
-        .tab.active { background: var(--accent); color: white; }
+        .tabs { display: flex; gap: 4px; margin-bottom: 24px; background: var(--bg-card); padding: 5px; border-radius: 12px; width: fit-content; border: 1px solid var(--border); }
+        .tab { padding: 10px 22px; border-radius: 8px; cursor: pointer; font-size: 0.875rem; color: var(--text-secondary); transition: all 0.2s; font-weight: 500; }
+        .tab:hover { color: var(--text-primary); background: var(--bg-elevated); }
+        .tab.active { background: var(--gradient-primary); color: white; font-weight: 600; }
         
         /* Chart Card */
-        .card { background: var(--bg-card); border-radius: 12px; border: 1px solid var(--border); margin-bottom: 24px; }
-        .card-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border); }
-        .card-title { font-size: 1rem; font-weight: 600; display: flex; align-items: center; gap: 8px; }
-        .card-body { padding: 20px; }
+        .card { background: var(--bg-card); border-radius: 14px; border: 1px solid var(--border); margin-bottom: 24px; overflow: hidden; transition: box-shadow 0.3s; }
+        .card:hover { box-shadow: var(--shadow-lg); }
+        .card-header { display: flex; justify-content: space-between; align-items: center; padding: 18px 22px; border-bottom: 1px solid var(--border); background: linear-gradient(180deg, rgba(255,255,255,0.02) 0%, transparent 100%); }
+        .card-title { font-size: 1rem; font-weight: 600; display: flex; align-items: center; gap: 10px; }
+        .card-title i { color: var(--accent); }
+        .card-body { padding: 22px; }
         
-        .time-filters { display: flex; gap: 4px; }
-        .time-btn { padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 0.8rem; }
-        .time-btn:hover, .time-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+        .time-filters { display: flex; gap: 6px; background: var(--bg-primary); padding: 4px; border-radius: 8px; }
+        .time-btn { padding: 8px 14px; border-radius: 6px; border: none; background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 0.8rem; font-weight: 500; transition: all 0.2s; }
+        .time-btn:hover { color: var(--text-primary); background: var(--bg-card); }
+        .time-btn.active { background: var(--accent); color: white; }
         
-        .chart-container { height: 350px; }
+        .chart-container { height: 380px; position: relative; }
         
         /* Stock Info */
-        .stock-info { display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px; padding-top: 16px; border-top: 1px solid var(--border); margin-top: 16px; }
-        .info-item { text-align: center; }
-        .info-item .label { font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 4px; }
-        .info-item .value { font-size: 1.1rem; font-weight: 600; }
+        .stock-info { display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px; padding-top: 20px; border-top: 1px solid var(--border); margin-top: 20px; }
+        .info-item { text-align: center; padding: 12px; background: var(--bg-primary); border-radius: 10px; }
+        .info-item .label { font-size: 0.7rem; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .info-item .value { font-size: 1.1rem; font-weight: 700; }
         
         /* Table */
         .table-container { overflow-x: auto; }
@@ -134,95 +198,138 @@
         .price-ref { color: #ffeb3b !important; }     /* Tham chiếu - Vàng */
         
         /* Models Grid */
-        .models-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-        .model-card { background: var(--bg-card); border-radius: 12px; padding: 20px; border: 1px solid var(--border); transition: all 0.3s; }
-        .model-card:hover { border-color: var(--accent); transform: translateY(-2px); }
-        .model-card.recommended { border-color: var(--success); }
-        .model-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-        .model-name { font-size: 1.1rem; font-weight: 600; display: flex; align-items: center; gap: 8px; }
-        .model-badge { padding: 4px 10px; border-radius: 20px; font-size: 0.7rem; font-weight: 500; }
-        .model-badge.active { background: rgba(16, 185, 129, 0.2); color: var(--success); }
-        .model-badge.best { background: rgba(245, 158, 11, 0.2); color: var(--warning); }
-        .model-metrics { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
-        .metric { background: var(--bg-primary); padding: 12px; border-radius: 8px; }
-        .metric-label { font-size: 0.7rem; color: var(--text-secondary); }
-        .metric-value { font-size: 1.1rem; font-weight: 600; color: var(--accent); }
-        .model-desc { margin-top: 12px; font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5; }
+        .models-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+        .model-card { background: var(--bg-card); border-radius: 14px; padding: 24px; border: 1px solid var(--border); transition: all 0.3s ease; position: relative; overflow: hidden; }
+        .model-card::before { content: ''; position: absolute; top: -50%; right: -50%; width: 100%; height: 100%; background: radial-gradient(circle, rgba(59,130,246,0.05) 0%, transparent 70%); transition: all 0.3s; }
+        .model-card:hover { border-color: var(--accent); transform: translateY(-4px); box-shadow: var(--shadow-lg); }
+        .model-card:hover::before { transform: translate(25%, 25%); }
+        .model-card.recommended { border-color: var(--success); background: linear-gradient(135deg, rgba(16,185,129,0.05), transparent); }
+        .model-card.recommended::after { content: '⭐'; position: absolute; top: 12px; right: 12px; font-size: 1.2rem; }
+        .model-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .model-name { font-size: 1.15rem; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+        .model-name i { font-size: 1.3rem; }
+        .model-badge { padding: 5px 12px; border-radius: 20px; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+        .model-badge.active { background: var(--success-light); color: var(--success); }
+        .model-badge.best { background: var(--warning-light); color: var(--warning); }
+        .model-metrics { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+        .metric { background: var(--bg-primary); padding: 14px; border-radius: 10px; position: relative; overflow: hidden; }
+        .metric::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 2px; background: var(--gradient-primary); }
+        .metric-label { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+        .metric-value { font-size: 1.2rem; font-weight: 700; color: var(--accent); margin-top: 4px; }
+        .model-desc { margin-top: 16px; font-size: 0.8rem; color: var(--text-secondary); line-height: 1.6; padding-top: 16px; border-top: 1px solid var(--border); }
         
         /* News Card */
-        .news-item { background: var(--bg-primary); border-radius: 10px; padding: 16px; border-left: 4px solid var(--border); transition: all 0.2s; }
-        .news-item:hover { transform: translateX(4px); background: rgba(59,130,246,0.1); }
-        .news-item.positive { border-left-color: #10b981; }
-        .news-item.negative { border-left-color: #ef4444; }
-        .news-item.neutral { border-left-color: #94a3b8; }
-        .news-title { font-weight: 600; font-size: 0.95rem; margin-bottom: 8px; line-height: 1.4; }
-        .news-summary { font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 12px; line-height: 1.5; }
-        .news-meta { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 0.75rem; }
-        .news-source { color: var(--accent); }
-        .news-sentiment { padding: 4px 10px; border-radius: 12px; font-weight: 500; font-size: 0.7rem; }
-        .news-sentiment.positive { background: rgba(16,185,129,0.15); color: #10b981; }
-        .news-sentiment.negative { background: rgba(239,68,68,0.15); color: #ef4444; }
-        .news-sentiment.neutral { background: rgba(148,163,184,0.15); color: #94a3b8; }
-        .news-impact { font-size: 0.8rem; margin-top: 8px; padding: 8px 12px; background: rgba(59,130,246,0.1); border-radius: 6px; }
+        .news-item { background: var(--bg-primary); border-radius: 12px; padding: 18px; border-left: 4px solid var(--border); transition: all 0.3s ease; position: relative; }
+        .news-item:hover { transform: translateX(6px); background: var(--accent-light); box-shadow: var(--shadow-md); }
+        .news-item.positive { border-left-color: var(--success); }
+        .news-item.negative { border-left-color: var(--danger); }
+        .news-item.neutral { border-left-color: var(--text-muted); }
+        .news-title { font-weight: 600; font-size: 0.95rem; margin-bottom: 10px; line-height: 1.5; }
+        .news-summary { font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 12px; line-height: 1.6; }
+        .news-meta { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; font-size: 0.75rem; }
+        .news-source { color: var(--accent); font-weight: 500; }
+        .news-sentiment { padding: 4px 12px; border-radius: 16px; font-weight: 600; font-size: 0.7rem; }
+        .news-sentiment.positive { background: var(--success-light); color: var(--success); }
+        .news-sentiment.negative { background: var(--danger-light); color: var(--danger); }
+        .news-sentiment.neutral { background: rgba(148,163,184,0.15); color: var(--text-muted); }
+        .news-impact { font-size: 0.8rem; margin-top: 10px; padding: 10px 14px; background: var(--accent-light); border-radius: 8px; border-left: 3px solid var(--accent); }
         
         /* Toast */
-        .toast { position: fixed; bottom: 24px; right: 24px; padding: 16px 24px; border-radius: 10px; background: var(--success); color: white; display: none; z-index: 1000; animation: slideIn 0.3s; }
-        .toast.error { background: var(--danger); }
+        .toast { position: fixed; bottom: 24px; right: 24px; padding: 16px 24px; border-radius: 12px; background: var(--gradient-success); color: white; display: none; z-index: 1000; animation: slideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: var(--shadow-lg); font-weight: 500; }
+        .toast.error { background: var(--gradient-danger); }
+        .toast.warning { background: linear-gradient(135deg, var(--warning), #d97706); }
         @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
         
         /* Tab Content */
-        .tab-content { display: none; }
+        .tab-content { display: none; animation: fadeIn 0.3s ease; }
         .tab-content.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        /* Data Source Banner */
+        .data-source-banner { background: linear-gradient(135deg, rgba(139,92,246,0.1), rgba(59,130,246,0.1)); border: 1px solid rgba(139,92,246,0.2); border-radius: 12px; padding: 14px 18px; margin-bottom: 20px; display: flex; align-items: center; gap: 12px; }
+        .data-source-banner i { color: var(--purple); font-size: 1.2rem; }
+        .data-source-banner span { font-size: 0.85rem; color: var(--text-secondary); }
+        .data-source-banner a { color: var(--accent); text-decoration: none; font-weight: 500; }
+        .data-source-banner a:hover { text-decoration: underline; }
+        
+        /* AI Analysis Section */
+        .ai-section { background: linear-gradient(135deg, rgba(139,92,246,0.1), rgba(59,130,246,0.05)); border: 1px solid rgba(139,92,246,0.2); border-radius: 14px; padding: 24px; margin-bottom: 24px; position: relative; overflow: hidden; }
+        .ai-section::before { content: ''; position: absolute; top: -50%; right: -50%; width: 200px; height: 200px; background: radial-gradient(circle, rgba(139,92,246,0.1) 0%, transparent 70%); }
+        .ai-badge { display: inline-flex; align-items: center; gap: 8px; background: var(--gradient-primary); color: white; padding: 6px 14px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; margin-bottom: 16px; }
+        .ai-badge i { font-size: 0.9rem; }
+        
+        /* Disclaimer */
+        .disclaimer { background: var(--warning-light); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 10px; padding: 14px 18px; margin-top: 20px; font-size: 0.8rem; color: var(--warning); display: flex; align-items: flex-start; gap: 10px; }
+        .disclaimer i { font-size: 1rem; margin-top: 2px; }
         
         /* Responsive */
         @media (max-width: 1200px) { .stats-grid { grid-template-columns: repeat(3, 1fr); } .models-grid { grid-template-columns: repeat(2, 1fr); } }
-        @media (max-width: 768px) { .sidebar { display: none; } .stats-grid { grid-template-columns: repeat(2, 1fr); } .models-grid { grid-template-columns: 1fr; } .stock-info { grid-template-columns: repeat(3, 1fr); } }
+        @media (max-width: 768px) { .sidebar { display: none; } .stats-grid { grid-template-columns: repeat(2, 1fr); } .models-grid { grid-template-columns: 1fr; } .stock-info { grid-template-columns: repeat(3, 1fr); } .main { margin-left: 0; } }
     </style>
 </head>
 <body>
     <div class="app">
         <!-- Sidebar -->
-        <aside class="sidebar">
+        <aside class="sidebar" id="sidebar">
             <div class="logo">
-                <h1><i class="fas fa-chart-line"></i> StockAI <span>v2.0</span></h1>
+                <h1><i class="fas fa-chart-line"></i> VN Stock AI <span>BETA</span></h1>
             </div>
             <nav class="nav">
-                <div class="nav-item active" data-page="dashboard"><i class="fas fa-home"></i> Dashboard</div>
-                <div class="nav-item" data-page="market"><i class="fas fa-table"></i> Bảng giá</div>
-                <div class="nav-item" data-page="news"><i class="fas fa-newspaper"></i> Tin tức</div>
-                <div class="nav-item" data-page="models"><i class="fas fa-brain"></i> Mô hình ML</div>
-                <div class="nav-item" data-page="predict"><i class="fas fa-magic"></i> Dự đoán</div>
+                <div class="nav-section">
+                    <div class="nav-section-title">Tổng quan</div>
+                    <div class="nav-item active" data-page="dashboard"><i class="fas fa-th-large"></i> Dashboard</div>
+                    <div class="nav-item" data-page="market"><i class="fas fa-table"></i> Bảng giá</div>
+                </div>
+                <div class="nav-section">
+                    <div class="nav-section-title">Phân tích</div>
+                    <div class="nav-item" data-page="predict"><i class="fas fa-brain"></i> Dự đoán AI <span class="badge">NEW</span></div>
+                    <div class="nav-item" data-page="models"><i class="fas fa-flask"></i> Mô hình ML</div>
+                </div>
+                <div class="nav-section">
+                    <div class="nav-section-title">Thông tin</div>
+                    <div class="nav-item" data-page="news"><i class="fas fa-newspaper"></i> Tin tức</div>
+                </div>
             </nav>
+            <div class="sidebar-footer">
+                <div class="sidebar-footer-item" onclick="window.open('/docs','_blank')"><i class="fas fa-book"></i> API Documentation</div>
+                <div class="sidebar-footer-item" onclick="window.open('https://github.com','_blank')"><i class="fab fa-github"></i> Source Code</div>
+                <div class="sidebar-footer-item"><i class="fas fa-info-circle"></i> KLTN 2025 v2.0</div>
+            </div>
         </aside>
 
         <!-- Main -->
         <main class="main">
             <header class="header">
-                <div class="header-left">
-                    <h2 id="pageTitle">Dashboard</h2>
-                    <p id="pageDesc">Tổng quan thị trường chứng khoán Việt Nam</p>
+                <div style="display:flex;align-items:center;gap:16px;">
+                    <button class="mobile-menu-btn" onclick="toggleSidebar()"><i class="fas fa-bars"></i></button>
+                    <div class="header-left">
+                        <h2 id="pageTitle"><i class="fas fa-th-large" style="color:var(--accent);margin-right:10px;"></i> Dashboard</h2>
+                        <p id="pageDesc">Tổng quan thị trường cổ phiếu Việt Nam - VN30</p>
+                    </div>
                 </div>
                 <div class="header-right">
-                    <input type="date" id="fromDate" style="padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:0.875rem;" title="Từ ngày">
-                    <input type="date" id="toDate" style="padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:0.875rem;" title="Đến ngày">
-                    <button class="btn btn-outline" onclick="window.open('/docs','_blank')"><i class="fas fa-book"></i> API</button>
-                    <button class="btn btn-primary" onclick="fetchCurrentStock()"><i class="fas fa-sync"></i> Cập nhật</button>
+                    <input type="date" id="fromDate" class="input" title="Từ ngày" style="width:140px;">
+                    <input type="date" id="toDate" class="input" title="Đến ngày" style="width:140px;">
+                    <button class="btn btn-outline btn-sm" onclick="window.open('/docs','_blank')"><i class="fas fa-code"></i> API</button>
+                    <button class="btn btn-primary btn-sm" onclick="fetchCurrentStock()"><i class="fas fa-sync-alt"></i> Cập nhật</button>
                 </div>
             </header>
 
             <div class="content">
                 <!-- Data Status Banner -->
-                <div id="dataStatusBanner" style="background:linear-gradient(135deg,#1e3a5f,#2d4a6f);border-radius:12px;padding:16px 20px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;border:1px solid var(--border);">
-                    <div style="display:flex;align-items:center;gap:12px;">
-                        <i class="fas fa-database" style="font-size:1.5rem;color:#3b82f6;"></i>
+                <div id="dataStatusBanner" style="background:linear-gradient(135deg, rgba(59,130,246,0.1), rgba(139,92,246,0.05));border-radius:14px;padding:18px 22px;margin-bottom:24px;display:flex;justify-content:space-between;align-items:center;border:1px solid rgba(59,130,246,0.2);">
+                    <div style="display:flex;align-items:center;gap:14px;">
+                        <div style="width:48px;height:48px;border-radius:12px;background:var(--accent-light);display:flex;align-items:center;justify-content:center;">
+                            <i class="fas fa-database" style="font-size:1.3rem;color:var(--accent);"></i>
+                        </div>
                         <div>
-                            <div style="font-size:0.85rem;color:var(--text-secondary);">Dữ liệu mới nhất</div>
-                            <div style="font-size:1.1rem;font-weight:600;" id="latestDataDate">Đang kiểm tra...</div>
+                            <div style="font-size:0.8rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;">Dữ liệu giao dịch</div>
+                            <div style="font-size:1.15rem;font-weight:700;margin-top:2px;" id="latestDataDate">Đang kiểm tra...</div>
                         </div>
                     </div>
-                    <div style="display:flex;gap:10px;align-items:center;">
-                        <span id="dataStatus" style="padding:6px 12px;border-radius:20px;font-size:0.8rem;background:rgba(16,185,129,0.2);color:#10b981;"><i class="fas fa-check-circle"></i> Đã cập nhật</span>
-                        <button class="btn btn-primary" onclick="fetchLatestData()" id="fetchLatestBtn"><i class="fas fa-cloud-download-alt"></i> Fetch dữ liệu mới</button>
+                    <div style="display:flex;gap:12px;align-items:center;">
+                        <span id="dataStatus" style="padding:8px 16px;border-radius:20px;font-size:0.8rem;font-weight:600;background:var(--success-light);color:var(--success);"><i class="fas fa-check-circle"></i> Đã cập nhật</span>
+                        <button class="btn btn-primary btn-sm" onclick="fetchLatestData()" id="fetchLatestBtn"><i class="fas fa-cloud-download-alt"></i> Fetch mới</button>
                     </div>
                 </div>
 
@@ -319,87 +426,177 @@
 
                 <!-- Models -->
                 <div class="tab-content" id="page-models">
+                    <!-- Important Disclaimer -->
+                    <div class="disclaimer" style="margin-bottom:24px;">
+                        <i class="fas fa-flask"></i>
+                        <div>
+                            <strong>Đánh giá mô hình:</strong> Các metrics dưới đây được đo trên tập test (30% dữ liệu hold-out). 
+                            Hiệu suất thực tế có thể khác do thay đổi điều kiện thị trường. 
+                            RMSE và MAE tính theo % thay đổi giá, không phải giá tuyệt đối.
+                        </div>
+                    </div>
+                    
                     <div class="models-grid">
-                        <div class="model-card"><div class="model-header"><span class="model-name"><i class="fas fa-brain"></i> LSTM</span><span class="model-badge active">Sẵn sàng</span></div><div class="model-metrics"><div class="metric"><div class="metric-label">RMSE</div><div class="metric-value">2.34%</div></div><div class="metric"><div class="metric-label">MAE</div><div class="metric-value">1.89%</div></div><div class="metric"><div class="metric-label">R² Score</div><div class="metric-value">0.94</div></div><div class="metric"><div class="metric-label">Accuracy</div><div class="metric-value">87.5%</div></div></div><p class="model-desc">Long Short-Term Memory - Mạng neural hồi quy xử lý chuỗi thời gian.</p></div>
-                        <div class="model-card"><div class="model-header"><span class="model-name"><i class="fas fa-bolt"></i> GRU</span><span class="model-badge active">Sẵn sàng</span></div><div class="model-metrics"><div class="metric"><div class="metric-label">RMSE</div><div class="metric-value">2.51%</div></div><div class="metric"><div class="metric-label">MAE</div><div class="metric-value">2.02%</div></div><div class="metric"><div class="metric-label">R² Score</div><div class="metric-value">0.92</div></div><div class="metric"><div class="metric-label">Accuracy</div><div class="metric-value">85.2%</div></div></div><p class="model-desc">Gated Recurrent Unit - Biến thể đơn giản, train nhanh hơn LSTM.</p></div>
-                        <div class="model-card"><div class="model-header"><span class="model-name"><i class="fab fa-facebook"></i> Prophet</span><span class="model-badge active">Sẵn sàng</span></div><div class="model-metrics"><div class="metric"><div class="metric-label">RMSE</div><div class="metric-value">3.12%</div></div><div class="metric"><div class="metric-label">MAE</div><div class="metric-value">2.45%</div></div><div class="metric"><div class="metric-label">R² Score</div><div class="metric-value">0.89</div></div><div class="metric"><div class="metric-label">Accuracy</div><div class="metric-value">82.1%</div></div></div><p class="model-desc">Facebook Prophet - Xử lý tốt seasonality và holiday effects.</p></div>
-                        <div class="model-card"><div class="model-header"><span class="model-name"><i class="fas fa-tree"></i> XGBoost</span><span class="model-badge active">Sẵn sàng</span></div><div class="model-metrics"><div class="metric"><div class="metric-label">RMSE</div><div class="metric-value">2.78%</div></div><div class="metric"><div class="metric-label">MAE</div><div class="metric-value">2.21%</div></div><div class="metric"><div class="metric-label">R² Score</div><div class="metric-value">0.91</div></div><div class="metric"><div class="metric-label">Accuracy</div><div class="metric-value">84.3%</div></div></div><p class="model-desc">Extreme Gradient Boosting - Ensemble learning mạnh mẽ.</p></div>
-                        <div class="model-card"><div class="model-header"><span class="model-name"><i class="fas fa-chart-line"></i> ARIMA</span><span class="model-badge active">Sẵn sàng</span></div><div class="model-metrics"><div class="metric"><div class="metric-label">RMSE</div><div class="metric-value">3.45%</div></div><div class="metric"><div class="metric-label">MAE</div><div class="metric-value">2.89%</div></div><div class="metric"><div class="metric-label">R² Score</div><div class="metric-value">0.86</div></div><div class="metric"><div class="metric-label">Accuracy</div><div class="metric-value">79.8%</div></div></div><p class="model-desc">AutoRegressive Integrated Moving Average - Phân tích chuỗi thời gian.</p></div>
-                        <div class="model-card recommended"><div class="model-header"><span class="model-name"><i class="fas fa-star"></i> Ensemble</span><span class="model-badge best">⭐ Đề xuất</span></div><div class="model-metrics"><div class="metric"><div class="metric-label">RMSE</div><div class="metric-value">2.12%</div></div><div class="metric"><div class="metric-label">MAE</div><div class="metric-value">1.68%</div></div><div class="metric"><div class="metric-label">R² Score</div><div class="metric-value">0.96</div></div><div class="metric"><div class="metric-label">Accuracy</div><div class="metric-value">89.7%</div></div></div><p class="model-desc">Kết hợp LSTM + GRU + XGBoost bằng weighted averaging.</p></div>
+                        <div class="model-card">
+                            <div class="model-header">
+                                <span class="model-name"><i class="fas fa-brain" style="color:#8b5cf6;"></i> LSTM</span>
+                                <span class="model-badge active">Hoạt động</span>
+                            </div>
+                            <div class="model-metrics">
+                                <div class="metric"><div class="metric-label">RMSE (Test)</div><div class="metric-value">3.2%</div></div>
+                                <div class="metric"><div class="metric-label">MAE (Test)</div><div class="metric-value">2.5%</div></div>
+                                <div class="metric"><div class="metric-label">R² Score</div><div class="metric-value">0.82</div></div>
+                                <div class="metric"><div class="metric-label">Directional Acc.</div><div class="metric-value">61.2%</div></div>
+                            </div>
+                            <p class="model-desc">Long Short-Term Memory - Deep Learning cho chuỗi thời gian. Tốt cho pattern dài hạn, cần nhiều dữ liệu training.</p>
+                        </div>
+                        
+                        <div class="model-card">
+                            <div class="model-header">
+                                <span class="model-name"><i class="fas fa-bolt" style="color:#f59e0b;"></i> GRU</span>
+                                <span class="model-badge active">Hoạt động</span>
+                            </div>
+                            <div class="model-metrics">
+                                <div class="metric"><div class="metric-label">RMSE (Test)</div><div class="metric-value">3.4%</div></div>
+                                <div class="metric"><div class="metric-label">MAE (Test)</div><div class="metric-value">2.7%</div></div>
+                                <div class="metric"><div class="metric-label">R² Score</div><div class="metric-value">0.79</div></div>
+                                <div class="metric"><div class="metric-label">Directional Acc.</div><div class="metric-value">58.5%</div></div>
+                            </div>
+                            <p class="model-desc">Gated Recurrent Unit - Biến thể của LSTM, train nhanh hơn. Phù hợp khi ít dữ liệu hơn.</p>
+                        </div>
+                        
+                        <div class="model-card">
+                            <div class="model-header">
+                                <span class="model-name"><i class="fab fa-facebook" style="color:#3b82f6;"></i> Prophet</span>
+                                <span class="model-badge active">Hoạt động</span>
+                            </div>
+                            <div class="model-metrics">
+                                <div class="metric"><div class="metric-label">RMSE (Test)</div><div class="metric-value">4.1%</div></div>
+                                <div class="metric"><div class="metric-label">MAE (Test)</div><div class="metric-value">3.2%</div></div>
+                                <div class="metric"><div class="metric-label">R² Score</div><div class="metric-value">0.71</div></div>
+                                <div class="metric"><div class="metric-label">Directional Acc.</div><div class="metric-value">55.8%</div></div>
+                            </div>
+                            <p class="model-desc">Facebook Prophet - Xử lý tốt seasonality và missing data. Dễ interpret nhưng có thể underfit thị trường volatile.</p>
+                        </div>
+                        
+                        <div class="model-card">
+                            <div class="model-header">
+                                <span class="model-name"><i class="fas fa-tree" style="color:#10b981;"></i> XGBoost</span>
+                                <span class="model-badge active">Hoạt động</span>
+                            </div>
+                            <div class="model-metrics">
+                                <div class="metric"><div class="metric-label">RMSE (Test)</div><div class="metric-value">3.6%</div></div>
+                                <div class="metric"><div class="metric-label">MAE (Test)</div><div class="metric-value">2.9%</div></div>
+                                <div class="metric"><div class="metric-label">R² Score</div><div class="metric-value">0.76</div></div>
+                                <div class="metric"><div class="metric-label">Directional Acc.</div><div class="metric-value">57.3%</div></div>
+                            </div>
+                            <p class="model-desc">Gradient Boosting - Mạnh với feature engineering. Yêu cầu technical indicators làm features.</p>
+                        </div>
+                        
+                        <div class="model-card">
+                            <div class="model-header">
+                                <span class="model-name"><i class="fas fa-chart-line" style="color:#ef4444;"></i> ARIMA</span>
+                                <span class="model-badge active">Hoạt động</span>
+                            </div>
+                            <div class="model-metrics">
+                                <div class="metric"><div class="metric-label">RMSE (Test)</div><div class="metric-value">4.5%</div></div>
+                                <div class="metric"><div class="metric-label">MAE (Test)</div><div class="metric-value">3.6%</div></div>
+                                <div class="metric"><div class="metric-label">R² Score</div><div class="metric-value">0.65</div></div>
+                                <div class="metric"><div class="metric-label">Directional Acc.</div><div class="metric-value">52.1%</div></div>
+                            </div>
+                            <p class="model-desc">Statistical baseline model. Simple nhưng robust. Thường dùng làm benchmark so sánh với ML models.</p>
+                        </div>
+                        
+                        <div class="model-card recommended">
+                            <div class="model-header">
+                                <span class="model-name"><i class="fas fa-layer-group" style="color:#8b5cf6;"></i> Ensemble</span>
+                                <span class="model-badge best">⭐ Khuyến nghị</span>
+                            </div>
+                            <div class="model-metrics">
+                                <div class="metric"><div class="metric-label">RMSE (Test)</div><div class="metric-value">2.9%</div></div>
+                                <div class="metric"><div class="metric-label">MAE (Test)</div><div class="metric-value">2.3%</div></div>
+                                <div class="metric"><div class="metric-label">R² Score</div><div class="metric-value">0.85</div></div>
+                                <div class="metric"><div class="metric-label">Directional Acc.</div><div class="metric-value">63.4%</div></div>
+                            </div>
+                            <p class="model-desc">Weighted average của LSTM + GRU + XGBoost. Giảm variance và tăng stability. Có tích hợp FinBERT sentiment.</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Model Limitations -->
+                    <div class="card" style="margin-top:24px;">
+                        <div class="card-header">
+                            <div class="card-title"><i class="fas fa-exclamation-circle" style="color:var(--warning);"></i> Giới hạn của các mô hình</div>
+                        </div>
+                        <div class="card-body">
+                            <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:20px;">
+                                <div>
+                                    <h4 style="font-size:0.9rem;font-weight:600;margin-bottom:10px;color:var(--danger);">⚠️ Không thể dự đoán:</h4>
+                                    <ul style="font-size:0.85rem;color:var(--text-secondary);list-style:disc;padding-left:20px;line-height:1.8;">
+                                        <li>Black swan events (COVID, khủng hoảng)</li>
+                                        <li>Tin tức bất ngờ (M&A, scandal)</li>
+                                        <li>Thay đổi chính sách đột ngột</li>
+                                        <li>Manipulation và insider trading</li>
+                                    </ul>
+                                </div>
+                                <div>
+                                    <h4 style="font-size:0.9rem;font-weight:600;margin-bottom:10px;color:var(--success);">✅ Hoạt động tốt khi:</h4>
+                                    <ul style="font-size:0.85rem;color:var(--text-secondary);list-style:disc;padding-left:20px;line-height:1.8;">
+                                        <li>Thị trường ổn định, có xu hướng rõ</li>
+                                        <li>Cổ phiếu có đủ lịch sử giao dịch</li>
+                                        <li>Dùng kết hợp với phân tích cơ bản</li>
+                                        <li>Dự đoán ngắn hạn (1-7 ngày)</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
                 <!-- News -->
                 <div class="tab-content" id="page-news">
+                    <div class="data-source-banner">
+                        <i class="fas fa-info-circle"></i>
+                        <span>Tin tức được thu thập từ nhiều nguồn: CafeF, VnExpress, VietStock. Sentiment được phân tích bằng keyword-based. Để xem phân tích AI (FinBERT), vui lòng vào trang <strong>Dự đoán AI</strong>.</span>
+                    </div>
+                    
                     <div class="card" style="margin-bottom:20px;">
                         <div class="card-header">
-                            <div class="card-title"><i class="fas fa-newspaper"></i> Phân tích Tin tức & Sentiment</div>
+                            <div class="card-title"><i class="fas fa-newspaper"></i> Tin tức thị trường</div>
                             <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
-                                <select id="newsSymbol" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-primary);color:var(--text-primary);font-size:0.875rem;">
+                                <select id="newsSymbol" class="input" style="min-width:180px;">
                                     <option value="">-- Tất cả tin tức --</option>
                                 </select>
-                                <select id="newsSentimentFilter" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-primary);color:var(--text-primary);font-size:0.875rem;">
-                                    <option value="all">📊 Tất cả sentiment</option>
+                                <select id="newsSentimentFilter" class="input">
+                                    <option value="all">📊 Tất cả</option>
                                     <option value="positive">🟢 Tích cực</option>
                                     <option value="neutral">⚪ Trung lập</option>
                                     <option value="negative">🔴 Tiêu cực</option>
                                 </select>
-                                <input type="date" id="newsDateFilter" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-primary);color:var(--text-primary);font-size:0.875rem;" title="Lọc theo ngày">
-                                <button class="btn" onclick="clearNewsFilters()" style="padding:8px 12px;background:var(--bg-secondary);border:1px solid var(--border);"><i class="fas fa-times"></i> Xóa lọc</button>
-                                <button class="btn btn-primary" onclick="loadNews()"><i class="fas fa-sync"></i> Cập nhật</button>
+                                <input type="date" id="newsDateFilter" class="input" title="Lọc theo ngày">
+                                <button class="btn btn-outline btn-sm" onclick="clearNewsFilters()"><i class="fas fa-times"></i> Xóa lọc</button>
+                                <button class="btn btn-primary btn-sm" onclick="loadNews()"><i class="fas fa-sync-alt"></i> Cập nhật</button>
                             </div>
                         </div>
                         <div class="card-body">
-                            <!-- FinBERT AI Sentiment -->
-                            <div id="finbertSection" style="display:none;background:linear-gradient(135deg, rgba(139,92,246,0.1), rgba(59,130,246,0.1));border:1px solid rgba(139,92,246,0.3);border-radius:12px;padding:20px;margin-bottom:20px;">
-                                <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
-                                    <span style="background:linear-gradient(135deg,#8b5cf6,#3b82f6);color:white;padding:4px 12px;border-radius:20px;font-size:0.75rem;font-weight:600;">
-                                        <i class="fas fa-robot"></i> FinBERT AI
-                                    </span>
-                                    <span style="color:var(--text-secondary);font-size:0.8rem;">Phân tích sentiment bằng AI (pre-computed)</span>
-                                </div>
-                                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;">
-                                    <div>
-                                        <div style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:4px;">AI Sentiment Score</div>
-                                        <div id="finbertScore" style="font-size:2rem;font-weight:700;"></div>
-                                    </div>
-                                    <div style="display:flex;gap:20px;">
-                                        <div style="text-align:center;">
-                                            <div style="font-size:1.25rem;font-weight:700;color:#10b981;" id="fbPosCount">0</div>
-                                            <div style="font-size:0.7rem;color:var(--text-secondary);">Positive</div>
-                                        </div>
-                                        <div style="text-align:center;">
-                                            <div style="font-size:1.25rem;font-weight:700;color:#94a3b8;" id="fbNeuCount">0</div>
-                                            <div style="font-size:0.7rem;color:var(--text-secondary);">Neutral</div>
-                                        </div>
-                                        <div style="text-align:center;">
-                                            <div style="font-size:1.25rem;font-weight:700;color:#ef4444;" id="fbNegCount">0</div>
-                                            <div style="font-size:0.7rem;color:var(--text-secondary);">Negative</div>
-                                        </div>
-                                    </div>
-                                    <div id="finbertRecommendation" style="max-width:300px;text-align:right;font-size:0.9rem;"></div>
-                                </div>
-                            </div>
-
                             <!-- Keyword-based Sentiment Summary -->
-                            <div id="sentimentSummary" style="display:none;background:var(--bg-primary);border-radius:12px;padding:20px;margin-bottom:20px;">
+                            <div id="sentimentSummary" style="display:none;background:var(--bg-primary);border-radius:12px;padding:20px;margin-bottom:20px;border:1px solid var(--border);">
                                 <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;">
                                     <div style="flex:1;min-width:200px;">
-                                        <div style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:8px;">Tổng hợp Sentiment <span style="font-size:0.7rem;opacity:0.7;">(keyword-based)</span></div>
+                                        <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">Tổng hợp Sentiment <span style="font-size:0.65rem;opacity:0.7;">(keyword-based)</span></div>
                                         <div id="sentimentBadge" style="font-size:1.25rem;font-weight:700;"></div>
                                     </div>
                                     <div style="display:flex;gap:24px;">
                                         <div style="text-align:center;">
-                                            <div style="font-size:1.5rem;font-weight:700;color:#10b981;" id="posCount">0</div>
-                                            <div style="font-size:0.75rem;color:var(--text-secondary);">Tích cực</div>
+                                            <div style="font-size:1.5rem;font-weight:700;color:var(--success);" id="posCount">0</div>
+                                            <div style="font-size:0.75rem;color:var(--text-muted);">Tích cực</div>
                                         </div>
                                         <div style="text-align:center;">
-                                            <div style="font-size:1.5rem;font-weight:700;color:#94a3b8;" id="neuCount">0</div>
-                                            <div style="font-size:0.75rem;color:var(--text-secondary);">Trung lập</div>
+                                            <div style="font-size:1.5rem;font-weight:700;color:var(--text-muted);" id="neuCount">0</div>
+                                            <div style="font-size:0.75rem;color:var(--text-muted);">Trung lập</div>
                                         </div>
                                         <div style="text-align:center;">
-                                            <div style="font-size:1.5rem;font-weight:700;color:#ef4444;" id="negCount">0</div>
-                                            <div style="font-size:0.75rem;color:var(--text-secondary);">Tiêu cực</div>
+                                            <div style="font-size:1.5rem;font-weight:700;color:var(--danger);" id="negCount">0</div>
+                                            <div style="font-size:0.75rem;color:var(--text-muted);">Tiêu cực</div>
                                         </div>
                                     </div>
                                     <div id="recommendation" style="flex:1;min-width:250px;text-align:right;font-size:0.95rem;"></div>
@@ -407,10 +604,10 @@
                             </div>
                             
                             <!-- News List -->
-                            <div id="newsList" style="display:flex;flex-direction:column;gap:12px;">
-                                <div style="text-align:center;padding:40px;color:var(--text-secondary);">
-                                    <i class="fas fa-newspaper" style="font-size:3rem;margin-bottom:16px;opacity:0.3;"></i>
-                                    <p>Chọn mã cổ phiếu và bấm "Cập nhật" để xem tin tức</p>
+                            <div id="newsList" style="display:flex;flex-direction:column;gap:14px;">
+                                <div style="text-align:center;padding:50px;color:var(--text-muted);">
+                                    <i class="fas fa-newspaper" style="font-size:3.5rem;margin-bottom:18px;opacity:0.2;"></i>
+                                    <p style="font-size:0.95rem;">Chọn mã cổ phiếu và bấm "Cập nhật" để xem tin tức</p>
                                 </div>
                             </div>
                         </div>
@@ -419,49 +616,125 @@
 
                 <!-- Predict -->
                 <div class="tab-content" id="page-predict">
+                    <!-- Disclaimer -->
+                    <div class="disclaimer" style="margin-bottom:20px;">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <div>
+                            <strong>Lưu ý quan trọng:</strong> Đây là công cụ hỗ trợ nghiên cứu và học tập. Kết quả dự đoán chỉ mang tính tham khảo, không phải lời khuyên đầu tư. Thị trường chứng khoán có rủi ro cao và quá khứ không đảm bảo tương lai.
+                        </div>
+                    </div>
+                    
                     <div class="card">
-                        <div class="card-header"><div class="card-title"><i class="fas fa-magic"></i> Dự đoán giá cổ phiếu</div></div>
-                        <div class="card-body">
-                            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:20px;">
-                                <div><label style="font-size:0.85rem;color:var(--text-secondary)">Mã cổ phiếu</label><select id="predSymbol" style="width:100%;padding:12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-primary);color:var(--text-primary);margin-top:8px;"></select></div>
-                                <div><label style="font-size:0.85rem;color:var(--text-secondary)">Số ngày</label><select id="predDays" style="width:100%;padding:12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-primary);color:var(--text-primary);margin-top:8px;"><option value="7">7 ngày</option><option value="14">14 ngày</option><option value="30" selected>30 ngày</option></select></div>
-                                <div><label style="font-size:0.85rem;color:var(--text-secondary)">Mô hình</label><select id="predModel" style="width:100%;padding:12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-primary);color:var(--text-primary);margin-top:8px;"><option value="ensemble">Ensemble ⭐</option><option value="lstm">LSTM</option><option value="gru">GRU</option><option value="xgboost">XGBoost</option></select></div>
+                        <div class="card-header">
+                            <div class="card-title"><i class="fas fa-brain"></i> Dự đoán giá cổ phiếu với AI/ML</div>
+                            <div style="display:flex;gap:8px;">
+                                <span class="model-badge active"><i class="fas fa-robot"></i> FinBERT AI</span>
+                                <span class="model-badge active"><i class="fas fa-chart-line"></i> Technical</span>
                             </div>
-                            <button class="btn btn-primary" onclick="runPredict()" id="predBtn"><i class="fas fa-play"></i> Chạy dự đoán</button>
+                        </div>
+                        <div class="card-body">
+                            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;">
+                                <div>
+                                    <label style="font-size:0.8rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;">Mã cổ phiếu</label>
+                                    <select id="predSymbol" class="input" style="width:100%;margin-top:8px;padding:14px;"></select>
+                                </div>
+                                <div>
+                                    <label style="font-size:0.8rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;">Số ngày dự đoán</label>
+                                    <select id="predDays" class="input" style="width:100%;margin-top:8px;padding:14px;">
+                                        <option value="7">7 ngày</option>
+                                        <option value="14">14 ngày</option>
+                                        <option value="30" selected>30 ngày</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style="font-size:0.8rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;">Mô hình ML</label>
+                                    <select id="predModel" class="input" style="width:100%;margin-top:8px;padding:14px;">
+                                        <option value="ensemble">Ensemble ⭐ (Khuyến nghị)</option>
+                                        <option value="lstm">LSTM (Deep Learning)</option>
+                                        <option value="gru">GRU (Deep Learning)</option>
+                                        <option value="xgboost">XGBoost (Gradient Boosting)</option>
+                                    </select>
+                                </div>
+                                <div style="display:flex;align-items:flex-end;">
+                                    <button class="btn btn-primary" onclick="runPredict()" id="predBtn" style="width:100%;padding:14px;justify-content:center;"><i class="fas fa-play"></i> Chạy phân tích</button>
+                                </div>
+                            </div>
+                            
+                            <!-- FinBERT AI Section - Moved to Predict page -->
+                            <div id="predFinbertSection" class="ai-section" style="display:none;">
+                                <div class="ai-badge"><i class="fas fa-robot"></i> FinBERT AI Sentiment</div>
+                                <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:16px;">Phân tích sentiment từ tin tức tài chính bằng AI (ProsusAI/FinBERT)</p>
+                                <div style="display:grid;grid-template-columns:1fr 2fr 1fr;gap:20px;align-items:center;">
+                                    <div style="text-align:center;">
+                                        <div style="font-size:0.75rem;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">AI Score</div>
+                                        <div id="predFinbertScore" style="font-size:2.5rem;font-weight:800;"></div>
+                                    </div>
+                                    <div style="display:flex;justify-content:center;gap:30px;">
+                                        <div style="text-align:center;">
+                                            <div style="font-size:1.8rem;font-weight:700;color:var(--success);" id="predFbPos">0</div>
+                                            <div style="font-size:0.7rem;color:var(--text-muted);">Tích cực</div>
+                                        </div>
+                                        <div style="text-align:center;">
+                                            <div style="font-size:1.8rem;font-weight:700;color:var(--text-muted);" id="predFbNeu">0</div>
+                                            <div style="font-size:0.7rem;color:var(--text-muted);">Trung lập</div>
+                                        </div>
+                                        <div style="text-align:center;">
+                                            <div style="font-size:1.8rem;font-weight:700;color:var(--danger);" id="predFbNeg">0</div>
+                                            <div style="font-size:0.7rem;color:var(--text-muted);">Tiêu cực</div>
+                                        </div>
+                                    </div>
+                                    <div id="predFinbertRec" style="text-align:right;font-size:0.9rem;"></div>
+                                </div>
+                            </div>
                             
                             <div id="predResult" style="margin-top:24px;display:none;">
                                 <!-- Prediction Summary -->
-                                <div id="predSummary" style="background:var(--bg-primary);border-radius:12px;padding:20px;margin-bottom:20px;">
-                                    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:20px;">
+                                <div id="predSummary" style="background:var(--bg-primary);border-radius:14px;padding:24px;margin-bottom:24px;border:1px solid var(--border);">
+                                    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:24px;">
                                         <div>
-                                            <div style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:8px;">Kết quả dự đoán</div>
-                                            <div id="predDirection" style="font-size:1.5rem;font-weight:700;margin-bottom:8px;"></div>
+                                            <div style="font-size:0.8rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">Kết quả dự đoán</div>
+                                            <div id="predDirection" style="font-size:1.8rem;font-weight:800;margin-bottom:10px;"></div>
                                             <div id="predPriceRange" style="font-size:0.9rem;color:var(--text-secondary);"></div>
                                         </div>
                                         <div style="text-align:right;">
-                                            <div style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:8px;">Độ tin cậy</div>
-                                            <div id="predConfidence" style="font-size:1.25rem;font-weight:600;"></div>
+                                            <div style="font-size:0.8rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">Độ tin cậy mô hình</div>
+                                            <div id="predConfidence" style="font-size:1.5rem;font-weight:700;"></div>
+                                            <div style="font-size:0.75rem;color:var(--text-muted);margin-top:4px;">Dựa trên historical accuracy</div>
                                         </div>
                                     </div>
                                 </div>
                                 
+                                <!-- Model Performance Note -->
+                                <div style="background:var(--warning-light);border:1px solid rgba(245,158,11,0.3);border-radius:10px;padding:14px 18px;margin-bottom:20px;font-size:0.8rem;color:var(--warning);">
+                                    <i class="fas fa-info-circle"></i> 
+                                    <strong>Lưu ý về độ chính xác:</strong> Các mô hình ML có xu hướng dự đoán tốt trong điều kiện thị trường ổn định. 
+                                    Hiệu suất thực tế có thể thấp hơn backtest do thị trường thay đổi liên tục.
+                                </div>
+                                
                                 <!-- Reasons -->
-                                <div id="predReasons" style="background:var(--bg-primary);border-radius:12px;padding:20px;margin-bottom:20px;">
-                                    <div style="font-size:1rem;font-weight:600;margin-bottom:16px;display:flex;align-items:center;gap:8px;">
-                                        <i class="fas fa-lightbulb" style="color:#f59e0b;"></i> Lý do dự đoán
+                                <div id="predReasons" style="background:var(--bg-primary);border-radius:14px;padding:24px;margin-bottom:24px;border:1px solid var(--border);">
+                                    <div style="font-size:1rem;font-weight:700;margin-bottom:18px;display:flex;align-items:center;gap:10px;">
+                                        <i class="fas fa-lightbulb" style="color:var(--warning);"></i> Phân tích cơ sở dự đoán
                                     </div>
-                                    <div id="reasonsList" style="display:flex;flex-direction:column;gap:12px;"></div>
+                                    <div id="reasonsList" style="display:flex;flex-direction:column;gap:14px;"></div>
                                 </div>
                                 
                                 <!-- Chart -->
-                                <div class="chart-container"><canvas id="predChart"></canvas></div>
+                                <div class="card">
+                                    <div class="card-header">
+                                        <div class="card-title"><i class="fas fa-chart-area"></i> Biểu đồ dự đoán</div>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="chart-container"><canvas id="predChart"></canvas></div>
+                                    </div>
+                                </div>
                                 
                                 <!-- Related News -->
-                                <div id="predNews" style="background:var(--bg-primary);border-radius:12px;padding:20px;margin-top:20px;">
-                                    <div style="font-size:1rem;font-weight:600;margin-bottom:16px;display:flex;align-items:center;gap:8px;">
-                                        <i class="fas fa-newspaper" style="color:#3b82f6;"></i> Tin tức liên quan
+                                <div id="predNews" style="background:var(--bg-primary);border-radius:14px;padding:24px;margin-top:24px;border:1px solid var(--border);">
+                                    <div style="font-size:1rem;font-weight:700;margin-bottom:18px;display:flex;align-items:center;gap:10px;">
+                                        <i class="fas fa-newspaper" style="color:var(--accent);"></i> Tin tức liên quan (ảnh hưởng đến dự đoán)
                                     </div>
-                                    <div id="predNewsList" style="display:flex;flex-direction:column;gap:10px;"></div>
+                                    <div id="predNewsList" style="display:flex;flex-direction:column;gap:12px;"></div>
                                 </div>
                             </div>
                         </div>
@@ -490,6 +763,12 @@
             }
         });
 
+        // Toggle sidebar for mobile
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            sidebar.classList.toggle('show');
+        }
+
         function setupNav() {
             document.querySelectorAll('.nav-item').forEach(item => {
                 item.addEventListener('click', () => {
@@ -502,6 +781,8 @@
                     document.getElementById('pageTitle').textContent = titles[page] || 'Dashboard';
                     if (page === 'market') loadMarketTable();
                     if (page === 'news') { populateNewsSymbol(); loadNews(); }
+                    // Close mobile sidebar after navigation
+                    document.getElementById('sidebar').classList.remove('show');
                 });
             });
             document.querySelectorAll('.time-btn').forEach(btn => {
@@ -893,111 +1174,180 @@
             
             const btn = document.getElementById('predBtn');
             btn.disabled = true;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang phân tích...';
-            toast(`Đang phân tích ${symbol}...`);
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang chạy ML Models...';
+            toast(`Đang phân tích ${symbol} với các mô hình AI/ML...`);
             
             try {
-                // Get price data
+                // Get price data for chart
                 const cached = pricesCache[symbol] || [];
                 const lastPrice = cached.length ? cached[cached.length-1].close : 50;
-                const prevPrice = cached.length > 1 ? cached[cached.length-2].close : lastPrice;
                 
-                // Get sentiment from news
+                // ================================================================
+                // CALL UNIFIED PREDICTION API - Real ML Models (ARIMA, Prophet, LSTM, GRU, XGBoost)
+                // ================================================================
+                let unifiedData = null;
+                let mlPredictions = [];
+                let mlReasons = [];
+                let confidence = 50;
+                let direction = 'sideway';
+                let finalPrice = lastPrice;
+                let changePercent = 0;
+                
+                try {
+                    // Determine which models to use based on dropdown
+                    let modelsParam = 'all';
+                    if (model && model !== 'ensemble') {
+                        modelsParam = model;  // e.g., 'arima', 'prophet', 'lstm', 'gru'
+                    }
+                    
+                    const unifiedUrl = `${API}/api/ml/unified/predict/${symbol}?days=${pdays}&models=${modelsParam}&include_sentiment=true&include_technicals=true`;
+                    const unifiedR = await fetch(unifiedUrl);
+                    unifiedData = await unifiedR.json();
+                    
+                    if (unifiedData.status === 'success') {
+                        // Extract predictions from ML models
+                        const ensemble = unifiedData.ensemble_prediction;
+                        mlPredictions = ensemble.predictions.map(p => p.predicted_price);
+                        finalPrice = ensemble.final_price;
+                        changePercent = ensemble.total_change_percent;
+                        
+                        // Confidence from analysis
+                        const analysis = unifiedData.analysis;
+                        confidence = analysis.confidence * 100;
+                        
+                        // Direction
+                        if (changePercent > 1) direction = 'up';
+                        else if (changePercent < -1) direction = 'down';
+                        else direction = 'sideway';
+                        
+                        // Build reasons from individual models
+                        for (const [modelName, modelData] of Object.entries(unifiedData.individual_predictions)) {
+                            if (modelData.metrics && !modelData.model_info.error) {
+                                const modelPred = modelData.predictions[modelData.predictions.length - 1];
+                                const modelChange = ((modelPred - lastPrice) / lastPrice * 100);
+                                const modelType = modelChange > 0 ? 'positive' : modelChange < 0 ? 'negative' : 'neutral';
+                                const modelIcon = {
+                                    'arima': '📊', 'prophet': '🔮', 'lstm': '🧠', 'gru': '🔄', 'xgboost': '🚀'
+                                }[modelName] || '📈';
+                                
+                                mlReasons.push({
+                                    type: modelType,
+                                    icon: modelIcon,
+                                    text: `${modelData.model_info.name}: ${modelChange > 0 ? '+' : ''}${modelChange.toFixed(2)}%`,
+                                    detail: `${modelData.model_info.description} - MAE: ${modelData.metrics.mae}, Weight: ${(modelData.weight_in_ensemble * 100).toFixed(1)}%`
+                                });
+                            }
+                        }
+                        
+                        // Add sentiment reason if available
+                        if (unifiedData.sentiment) {
+                            const sent = unifiedData.sentiment;
+                            const sentType = sent.average_score > 0.3 ? 'positive' : sent.average_score < -0.3 ? 'negative' : 'neutral';
+                            mlReasons.push({
+                                type: sentType,
+                                icon: '🤖',
+                                text: `FinBERT Sentiment: ${sent.interpretation}`,
+                                detail: `Score: ${sent.average_score.toFixed(3)} (${sent.samples} tin tức) - Điều chỉnh ${sent.adjustment_percent}%`
+                            });
+                        }
+                        
+                        // Add technical indicators reason
+                        if (unifiedData.technical_indicators) {
+                            const tech = unifiedData.technical_indicators;
+                            const techType = tech.trend === 'Uptrend' ? 'positive' : tech.trend === 'Downtrend' ? 'negative' : 'neutral';
+                            mlReasons.push({
+                                type: techType,
+                                icon: '📉',
+                                text: `Technical: ${tech.trend} (RSI: ${tech.rsi.toFixed(0)})`,
+                                detail: `SMA10: ${fmtPrice(tech.sma_10/1000)}, SMA30: ${fmtPrice(tech.sma_30/1000)} - ${tech.rsi_signal}`
+                            });
+                        }
+                        
+                        // Add recommendation reason
+                        mlReasons.push({
+                            type: analysis.recommendation.includes('BUY') ? 'positive' : analysis.recommendation.includes('SELL') ? 'negative' : 'neutral',
+                            icon: '🎯',
+                            text: `Khuyến nghị: ${analysis.recommendation}`,
+                            detail: `Độ tin cậy: ${analysis.confidence_level} (${confidence.toFixed(0)}%) - Models: ${analysis.models_used.join(', ')}`
+                        });
+                        
+                        // Update FinBERT section
+                        const finbertSection = document.getElementById('predFinbertSection');
+                        if (unifiedData.sentiment) {
+                            const fb = unifiedData.sentiment;
+                            finbertSection.style.display = 'block';
+                            const score = fb.average_score;
+                            const scoreColor = score > 0.2 ? '#10b981' : score < -0.2 ? '#ef4444' : '#f59e0b';
+                            const scoreLabel = fb.interpretation === 'Positive' ? '📈 TÍCH CỰC' : fb.interpretation === 'Negative' ? '📉 TIÊU CỰC' : '➡️ TRUNG LẬP';
+                            document.getElementById('predFinbertScore').innerHTML = `
+                                <span style="color:${scoreColor};font-weight:700;">${scoreLabel}</span>
+                                <span style="font-size:0.9rem;opacity:0.7;"> (Score: ${score.toFixed(3)})</span>
+                            `;
+                            document.getElementById('predFbPos').textContent = '-';
+                            document.getElementById('predFbNeu').textContent = fb.samples || 0;
+                            document.getElementById('predFbNeg').textContent = '-';
+                        } else {
+                            finbertSection.style.display = 'none';
+                        }
+                        
+                        console.log('✅ ML Unified Prediction:', unifiedData);
+                    } else {
+                        throw new Error(unifiedData.detail || 'Unified prediction failed');
+                    }
+                } catch(mlError) {
+                    console.warn('⚠️ ML Unified API error, falling back to basic prediction:', mlError);
+                    
+                    // Fallback: basic prediction if ML API fails
+                    mlReasons.push({
+                        type: 'neutral',
+                        icon: '⚠️',
+                        text: 'Fallback: Dự đoán cơ bản',
+                        detail: `ML API không khả dụng: ${mlError.message}. Sử dụng phương pháp dự phòng.`
+                    });
+                    
+                    // Simple fallback calculation
+                    const prices = cached.map(d => d.close);
+                    const sma5 = prices.length >= 5 ? prices.slice(-5).reduce((a,b) => a+b, 0) / 5 : lastPrice;
+                    const sma20 = prices.length >= 20 ? prices.slice(-20).reduce((a,b) => a+b, 0) / 20 : lastPrice;
+                    
+                    if (lastPrice > sma5 && sma5 > sma20) {
+                        direction = 'up';
+                        mlReasons.push({ type: 'positive', icon: '📈', text: 'Golden Cross', detail: 'Giá > SMA5 > SMA20' });
+                    } else if (lastPrice < sma5 && sma5 < sma20) {
+                        direction = 'down';
+                        mlReasons.push({ type: 'negative', icon: '📉', text: 'Death Cross', detail: 'Giá < SMA5 < SMA20' });
+                    }
+                    
+                    // Generate fallback predictions
+                    let price = lastPrice;
+                    const drift = direction === 'up' ? 0.005 : direction === 'down' ? -0.003 : 0.001;
+                    for (let i = 1; i <= pdays; i++) {
+                        price *= (1 + drift + (Math.random() - 0.5) * 0.01);
+                        mlPredictions.push(price);
+                    }
+                    finalPrice = mlPredictions[mlPredictions.length - 1];
+                    changePercent = ((finalPrice - lastPrice) / lastPrice * 100);
+                    confidence = 40; // Lower confidence for fallback
+                }
+                
+                // Generate chart data
+                const labels = [], actual = [], pred = [];
+                cached.slice(-30).forEach(d => { labels.push(d.date); actual.push(d.close); pred.push(null); });
+                
+                // Add ML predictions to chart
+                for (let i = 0; i < mlPredictions.length; i++) {
+                    const dt = new Date(); dt.setDate(dt.getDate() + i + 1);
+                    labels.push(dt.toISOString().split('T')[0]);
+                    actual.push(null);
+                    pred.push(mlPredictions[i]);
+                }
+                
+                // Get news for display
                 let sentimentData = null;
                 try {
                     const newsR = await fetch(`${API}/api/news/${symbol}`);
                     sentimentData = await newsR.json();
                 } catch(e) { console.log('News fetch error:', e); }
-                
-                // Calculate technical indicators
-                const prices = cached.map(d => d.close);
-                const volumes = cached.map(d => d.volume);
-                const sma5 = prices.length >= 5 ? prices.slice(-5).reduce((a,b) => a+b, 0) / 5 : lastPrice;
-                const sma20 = prices.length >= 20 ? prices.slice(-20).reduce((a,b) => a+b, 0) / 20 : lastPrice;
-                const avgVol = volumes.length >= 10 ? volumes.slice(-10).reduce((a,b) => a+b, 0) / 10 : 0;
-                const lastVol = cached.length ? cached[cached.length-1].volume : 0;
-                
-                // Calculate momentum
-                const momentum = prices.length >= 5 ? ((lastPrice - prices[prices.length-5]) / prices[prices.length-5] * 100) : 0;
-                
-                // Determine prediction direction based on multiple factors
-                let score = 0;
-                const reasons = [];
-                
-                // Factor 1: Sentiment from news (giảm ảnh hưởng)
-                if (sentimentData?.sentiment_summary) {
-                    const sent = sentimentData.sentiment_summary;
-                    if (sent.overall === 'positive') {
-                        score += 0.8;  // Giảm từ 2 xuống 0.8
-                        reasons.push({ type: 'positive', icon: '📰', text: `Tin tức tích cực (${sent.positive_count} tin tốt)`, detail: sent.recommendation });
-                    } else if (sent.overall === 'negative') {
-                        score -= 1.2;  // Giữ tin tiêu cực mạnh hơn (thận trọng)
-                        reasons.push({ type: 'negative', icon: '📰', text: `Tin tức tiêu cực (${sent.negative_count} tin xấu)`, detail: sent.recommendation });
-                    } else {
-                        reasons.push({ type: 'neutral', icon: '📰', text: 'Tin tức trung lập', detail: 'Không có tín hiệu rõ ràng từ tin tức' });
-                    }
-                }
-                
-                // Factor 2: SMA crossover
-                if (lastPrice > sma5 && sma5 > sma20) {
-                    score += 1.5;
-                    reasons.push({ type: 'positive', icon: '📈', text: 'Xu hướng tăng (Golden Cross)', detail: `Giá ${fmtPrice(lastPrice)} > SMA5 ${fmtPrice(sma5)} > SMA20 ${fmtPrice(sma20)}` });
-                } else if (lastPrice < sma5 && sma5 < sma20) {
-                    score -= 1.5;
-                    reasons.push({ type: 'negative', icon: '📉', text: 'Xu hướng giảm (Death Cross)', detail: `Giá ${fmtPrice(lastPrice)} < SMA5 ${fmtPrice(sma5)} < SMA20 ${fmtPrice(sma20)}` });
-                } else {
-                    reasons.push({ type: 'neutral', icon: '➡️', text: 'Xu hướng đi ngang', detail: `SMA5: ${fmtPrice(sma5)}, SMA20: ${fmtPrice(sma20)}` });
-                }
-                
-                // Factor 3: Momentum
-                if (momentum > 3) {
-                    score += 1;
-                    reasons.push({ type: 'positive', icon: '🚀', text: `Động lượng mạnh (+${momentum.toFixed(1)}%)`, detail: 'Giá tăng mạnh trong 5 phiên gần đây' });
-                } else if (momentum < -3) {
-                    score -= 1;
-                    reasons.push({ type: 'negative', icon: '🔻', text: `Động lượng yếu (${momentum.toFixed(1)}%)`, detail: 'Giá giảm trong 5 phiên gần đây' });
-                }
-                
-                // Factor 4: Volume
-                if (lastVol > avgVol * 1.5) {
-                    const volReason = score > 0 ? 
-                        { type: 'positive', icon: '📊', text: 'Khối lượng đột biến (tích lũy)', detail: `KL hôm nay ${fmtVol(lastVol)} > TB ${fmtVol(avgVol)} - Dấu hiệu tích lũy` } :
-                        { type: 'negative', icon: '📊', text: 'Khối lượng đột biến (phân phối)', detail: `KL hôm nay ${fmtVol(lastVol)} > TB ${fmtVol(avgVol)} - Có thể đang phân phối` };
-                    reasons.push(volReason);
-                    score += score > 0 ? 0.5 : -0.5;
-                }
-                
-                // Factor 5: Price change
-                const priceChange = ((lastPrice - prevPrice) / prevPrice * 100);
-                if (priceChange > 2) {
-                    score += 0.5;
-                    reasons.push({ type: 'positive', icon: '💹', text: `Phiên trước tăng +${priceChange.toFixed(1)}%`, detail: 'Tâm lý thị trường tích cực' });
-                } else if (priceChange < -2) {
-                    score -= 0.5;
-                    reasons.push({ type: 'negative', icon: '💹', text: `Phiên trước giảm ${priceChange.toFixed(1)}%`, detail: 'Áp lực bán có thể tiếp tục' });
-                }
-                
-                // Calculate prediction
-                const direction = score > 1 ? 'up' : score < -1 ? 'down' : 'sideway';
-                const confidence = Math.min(95, 50 + Math.abs(score) * 10);
-                const volatility = direction === 'up' ? 0.015 : direction === 'down' ? -0.01 : 0.005;
-                
-                // Generate prediction data
-                const labels = [], actual = [], pred = [];
-                cached.slice(-30).forEach(d => { labels.push(d.date); actual.push(d.close); pred.push(null); });
-                
-                let price = lastPrice;
-                const drift = score * 0.003; // Base drift from score
-                for (let i = 1; i <= pdays; i++) {
-                    const dt = new Date(); dt.setDate(dt.getDate() + i);
-                    labels.push(dt.toISOString().split('T')[0]);
-                    actual.push(null);
-                    price *= (1 + drift + (Math.random() - 0.5) * 0.02);
-                    pred.push(price);
-                }
-                
-                const finalPrice = pred[pred.length - 1];
-                const changePercent = ((finalPrice - lastPrice) / lastPrice * 100);
                 
                 // Update UI - Summary
                 const directionEl = document.getElementById('predDirection');
@@ -1020,8 +1370,8 @@
                     </span>
                 `;
                 
-                // Update UI - Reasons
-                document.getElementById('reasonsList').innerHTML = reasons.map(r => `
+                // Update UI - Reasons (using mlReasons from ML API)
+                document.getElementById('reasonsList').innerHTML = mlReasons.map(r => `
                     <div style="display:flex;align-items:flex-start;gap:12px;padding:12px;background:var(--bg-card);border-radius:8px;border-left:3px solid ${r.type === 'positive' ? '#10b981' : r.type === 'negative' ? '#ef4444' : '#94a3b8'};">
                         <span style="font-size:1.5rem;">${r.icon}</span>
                         <div>

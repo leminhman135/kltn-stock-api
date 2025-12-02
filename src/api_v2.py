@@ -71,6 +71,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# =====================================================
+# INCLUDE ML MODELS ROUTER
+# =====================================================
+try:
+    from src.api.ml_endpoints import router as ml_router
+    app.include_router(ml_router)
+    logger.info("✅ ML Models router loaded successfully")
+except ImportError as e:
+    logger.warning(f"⚠️ ML Models router not loaded: {e}")
+
 
 # =====================================================
 # PYDANTIC MODELS
