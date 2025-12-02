@@ -17,6 +17,9 @@ import pandas as pd
 import logging
 import os
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 from src.database.connection import get_db, engine
 from src.database.models import (
     Stock, StockPrice, TechnicalIndicator,
@@ -34,9 +37,6 @@ try:
     logger.info("✅ Extended database models imported")
 except ImportError as e:
     logger.warning(f"⚠️ Extended models not available: {e}")
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 # Get the directory of the current file
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
