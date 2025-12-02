@@ -53,11 +53,11 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("🚀 Starting KLTN Stock Prediction API...")
     try:
-        # Create all tables
-        Base.metadata.create_all(bind=engine)
+        # Create all tables (checkfirst=True to skip existing tables/indexes)
+        Base.metadata.create_all(bind=engine, checkfirst=True)
         logger.info("✅ Database tables created/verified successfully!")
     except Exception as e:
-        logger.error(f"❌ Database initialization error: {e}")
+        logger.warning(f"⚠️ Database initialization warning (non-fatal): {e}")
     
     yield
     
