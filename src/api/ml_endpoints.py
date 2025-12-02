@@ -1190,6 +1190,10 @@ async def unified_predict(
                 detail=f"Không đủ dữ liệu lịch sử. Cần ít nhất 60 ngày, hiện có {len(df)} ngày."
             )
         
+        # Ensure DatetimeIndex for Prophet compatibility
+        if not isinstance(df.index, pd.DatetimeIndex):
+            df.index = pd.to_datetime(df.index)
+        
         close_prices = df['close']
         current_price = float(close_prices.iloc[-1])
         
@@ -1210,26 +1214,36 @@ async def unified_predict(
         
         # 1. ARIMA
         if "arima" in model_list:
-            try:
-                from src.models.arima_model import ARIMAModel
-                arima = ARIMAModel(order=(5, 1, 2))
-                arima.fit(close_prices)
-                arima_preds = arima.predict(steps=days)
-                predictions['arima'] = arima_preds.tolist() if hasattr(arima_preds, 'tolist') else list(arima_preds)
-                
-                # Evaluate
-                arima_test = ARIMAModel(order=(5, 1, 2))
-                arima_test.fit(train_data)
-                metrics['arima'] = arima_test.evaluate(test_data)
-                model_details['arima'] = {
-                    "name": "ARIMA(5,1,2)",
-                    "type": "Classical Time Series",
-                    "order": "(5,1,2)",
-                    "description": "AutoRegressive Integrated Moving Average"
-                }
-            except Exception as e:
-                logger.warning(f"ARIMA failed: {e}")
-                model_details['arima'] = {"error": str(e)}
+            arima_orders = [(5, 1, 2), (2, 1, 2), (3, 1, 1), (1, 1, 1)]  # Fallback orders
+            arima_success = False
+            
+            for order in arima_orders:
+                try:
+                    from src.models.arima_model import ARIMAModel
+                    arima = ARIMAModel(order=order)
+                    arima.fit(close_prices)
+                    arima_preds = arima.predict(steps=days)
+                    predictions['arima'] = arima_preds.tolist() if hasattr(arima_preds, 'tolist') else list(arima_preds)
+                    
+                    # Evaluate
+                    arima_test = ARIMAModel(order=order)
+                    arima_test.fit(train_data)
+                    metrics['arima'] = arima_test.evaluate(test_data)
+                    model_details['arima'] = {
+                        "name": f"ARIMA{order}",
+                        "type": "Classical Time Series",
+                        "order": str(order),
+                        "description": "AutoRegressive Integrated Moving Average"
+                    }
+                    arima_success = True
+                    logger.info(f"ARIMA succeeded with order {order}")
+                    break
+                except Exception as e:
+                    logger.warning(f"ARIMA order {order} failed: {e}")
+                    continue
+            
+            if not arima_success:
+                model_details['arima'] = {"error": "All ARIMA orders failed"}
         
         # 2. Prophet
         if "prophet" in model_list:
