@@ -40,6 +40,21 @@
    - **Đối tượng**: Developers làm việc với tin tức
    - **Thời gian đọc**: 20-30 phút
 
+### 📊 Dataset Description
+
+#### 4. [Dataset Description](dataset_description.md) - **Mô tả tập dữ liệu**
+   - **Mô tả**: Tài liệu chi tiết về tập dữ liệu sử dụng trong thực nghiệm
+   - **Nội dung**:
+     - 30 mã VN30 stocks với phân nhóm ngành
+     - Cấu trúc OHLCV data (~37,500 records)
+     - 20+ technical indicators với công thức
+     - News data và sentiment analysis (~50,000 articles)
+     - Data sources: VNDirect API, SSI API, RSS feeds
+     - Data preprocessing & quality metrics
+     - Database schema và storage structure
+   - **Đối tượng**: Researchers, data scientists, reviewers
+   - **Thời gian đọc**: 30-40 phút
+
 ---
 
 ## 🗂️ Cấu trúc Documentation
@@ -47,9 +62,10 @@
 ```
 docs/
 ├── README.md                          # This file
-├── sentiment_pipeline_guide.md        # 📘 Full pipeline guide (590 lines)
+├── sentiment_pipeline_guide.md        # 📘 Full pipeline guide (1400 lines)
 ├── quick_start_sentiment.md           # 🚀 Quick start (300 lines)
-└── news_relevance_guide.md            # 📰 Relevance model (590 lines)
+├── news_relevance_guide.md            # 📰 Relevance model (590 lines)
+└── dataset_description.md             # 📊 Dataset documentation (1200 lines)
 ```
 
 ---
@@ -78,13 +94,16 @@ docs/
 2. news_relevance_guide.md - Full read (30 phút)
    → Hiểu công thức relevance scoring
 
-3. Đọc source code:
+3. dataset_description.md - Full read (40 phút)
+   → Hiểu cấu trúc dữ liệu và nguồn thu thập
+
+4. Đọc source code:
    - src/hybrid_sentiment.py (400 lines)
    - src/sentiment_pipeline.py (600 lines)
    - src/news_relevance.py (400 lines)
 ```
 
-**Total**: 2-3 giờ → Expert level
+**Total**: 3-4 giờ → Expert level
 
 ### Path 3: Tôi cần giải quyết vấn đề cụ thể
 
@@ -101,6 +120,13 @@ docs/
 
 #### Problem: Muốn filter tin tức theo mức độ liên quan
 → `news_relevance_guide.md` - Section "Sử dụng Relevance Model"
+
+#### Problem: Hiểu cấu trúc dữ liệu training
+→ `dataset_description.md` - Section "Loại Dữ liệu"
+→ `dataset_description.md` - Section "Thống kê Mô tả"
+
+#### Problem: Cần biết nguồn dữ liệu
+→ `dataset_description.md` - Section "Nguồn Thu thập Dữ liệu"
 
 ---
 
@@ -371,6 +397,7 @@ grep -r "relevance score" docs/
 - [📘 Full Pipeline Guide](sentiment_pipeline_guide.md)
 - [🚀 Quick Start](quick_start_sentiment.md)
 - [📰 Relevance Model](news_relevance_guide.md)
+- [📊 Dataset Description](dataset_description.md)
 
 ### Code Files
 - [src/hybrid_sentiment.py](../src/hybrid_sentiment.py) - Hybrid analyzer
@@ -383,6 +410,12 @@ grep -r "relevance score" docs/
 - `GET /api/news/{symbol}` - News with relevance
 - `GET /api/news/features/sentiment` - Keyword list
 - `GET /api/news/features/relevance/{symbol}` - Company profile
+
+### Database Documentation
+- See `dataset_description.md` for full schema
+- `stock_prices`: OHLCV data (~37,500 records)
+- `technical_indicators`: 20+ indicators
+- `news`: ~50,000 articles with sentiment
 
 ---
 
