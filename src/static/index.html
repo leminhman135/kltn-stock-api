@@ -1542,9 +1542,13 @@
             newsList.innerHTML = '<div style="text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin" style="font-size:2rem;color:var(--accent);"></i><p style="margin-top:16px;color:var(--text-secondary);">Đang tải tin tức...</p></div>';
             
             try {
-                const url = symbol ? `${API}/api/news/${symbol}` : `${API}/api/news`;
+                // Increase limit to 50 for better coverage
+                const url = symbol ? `${API}/api/news/${symbol}?limit=100` : `${API}/api/news?limit=100`;
+                console.log('Fetching news from:', url);
                 const r = await fetch(url);
+                console.log('Response status:', r.status);
                 const data = await r.json();
+                console.log('News data:', data);
                 
                 // Also fetch FinBERT data if symbol is selected
                 if (symbol) {

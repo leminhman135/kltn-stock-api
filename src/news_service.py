@@ -426,8 +426,8 @@ class NewsService:
         
         return filtered
     
-    def get_all_news(self, symbol: str = None, limit: int = 30) -> List[NewsArticle]:
-        """Lấy tin từ TẤT CẢ nguồn RSS"""
+    def get_all_news(self, symbol: str = None, limit: int = 100) -> List[NewsArticle]:
+        """Lấy tin từ TẤT CẢ nguồn RSS và web scraping"""
         cache_key = self._get_cache_key(f"all_news_{symbol or 'general'}_{limit}")
         
         if self._is_cache_valid(cache_key) and cache_key in self._cache:
@@ -435,10 +435,10 @@ class NewsService:
         
         all_news = []
         
-        # 1. Lấy từ tất cả RSS feeds
+        # 1. Lấy từ tất cả RSS feeds (tăng limit để có nhiều tin hơn)
         for feed_name, feed_url in self.RSS_FEEDS.items():
             try:
-                news = self.fetch_rss(feed_name, feed_url, limit=12)
+                news = self.fetch_rss(feed_name, feed_url, limit=20)  # Increased from 12 to 20
                 all_news.extend(news)
             except Exception as e:
                 print(f"Error with {feed_name}: {e}")
@@ -446,7 +446,7 @@ class NewsService:
         
         # 2. Thử scrape thêm từ CafeF Web (vì RSS đã tắt)
         try:
-            cafef_news = self.scrape_cafef_web(limit=10)
+            cafef_news = self.scrape_cafef_web(limit=15)  # Increased from 10 to 15
             all_news.extend(cafef_news)
         except Exception as e:
             print(f"CafeF scraping failed: {e}")
