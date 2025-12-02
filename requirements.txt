@@ -27,7 +27,7 @@ sentencepiece>=0.1.99
 
 # Technical Analysis
 ta>=0.11.0
-ta-lib-bin>=0.4.28
+# ta-lib requires C library, use 'ta' package instead which is pure Python
 
 # Time Series Forecasting
 prophet>=1.1.5
