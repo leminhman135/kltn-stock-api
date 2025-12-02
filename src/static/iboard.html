@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VN Stock iBoard - Real-time Market Data</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        :root {
+            --bg-primary: #121826;
+            --bg-secondary: #1a2332;
+            --bg-card: #1f2937;
+            --bg-hover: #2d3748;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --border: #2d3748;
+            --green: #00c087;
+            --red: #ff4d4d;
+            --yellow: #ffb800;
+            --cyan: #00d4ff;
+            --purple: #9333ea;
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-size: 13px;
+            overflow-x: hidden;
+        }
+        
+        /* Top Bar */
+        .topbar {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            padding: 8px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        
+        .topbar-left {
+            display: flex;
+            align-items: center;
+            gap: 24px;
+        }
+        
+        .logo {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--green);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .logo span {
+            background: linear-gradient(135deg, var(--green), var(--cyan));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .index-tabs {
+            display: flex;
+            gap: 12px;
+        }
+        
+        .index-tab {
+            padding: 6px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid transparent;
+            font-weight: 500;
+        }
+        
+        .index-tab:hover {
+            background: var(--bg-hover);
+        }
+        
+        .index-tab.active {
+            background: rgba(0, 192, 135, 0.1);
+            border-color: var(--green);
+            color: var(--green);
+        }
+        
+        .index-info {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 12px;
+        }
+        
+        .index-value {
+            font-weight: 600;
+            font-size: 13px;
+        }
+        
+        .index-change {
+            font-size: 12px;
+        }
+        
+        .index-change.up { color: var(--green); }
+        .index-change.down { color: var(--red); }
+        
+        .topbar-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+        
+        /* Charts Area */
+        .charts-container {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+            padding: 12px 16px;
+            background: var(--bg-primary);
+        }
+        
+        .mini-chart {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px;
+            height: 180px;
+        }
+        
+        .mini-chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        
+        .mini-chart-title {
+            font-weight: 600;
+            font-size: 13px;
+        }
+        
+        .mini-chart-value {
+            font-size: 14px;
+            font-weight: 600;
+        }
+        
+        .mini-chart-value.up { color: var(--green); }
+        .mini-chart-value.down { color: var(--red); }
+        
+        .mini-chart-body {
+            height: 120px;
+        }
+        
+        /* Price Table */
+        .table-container {
+            padding: 0 16px 16px;
+            overflow-x: auto;
+        }
+        
+        .price-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        .price-table th {
+            background: var(--bg-card);
+            padding: 10px 8px;
+            text-align: center;
+            font-weight: 600;
+            font-size: 11px;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            border-bottom: 1px solid var(--border);
+            white-space: nowrap;
+        }
+        
+        .price-table th.group {
+            background: #1a2030;
+        }
+        
+        .price-table td {
+            padding: 8px;
+            text-align: center;
+            border-bottom: 1px solid var(--border);
+            font-size: 12px;
+            white-space: nowrap;
+        }
+        
+        .price-table tbody tr {
+            transition: background 0.15s;
+        }
+        
+        .price-table tbody tr:hover {
+            background: var(--bg-hover);
+        }
+        
+        .ticker-cell {
+            font-weight: 700;
+            color: var(--yellow);
+            cursor: pointer;
+            position: sticky;
+            left: 0;
+            background: var(--bg-secondary);
+            z-index: 1;
+        }
+        
+        .ticker-cell:hover {
+            color: var(--cyan);
+        }
+        
+        .floor-cell {
+            font-weight: 600;
+            font-size: 11px;
+            padding: 2px 6px;
+            border-radius: 3px;
+            display: inline-block;
+        }
+        
+        .floor-hose {
+            background: rgba(220, 38, 38, 0.2);
+            color: #f87171;
+        }
+        
+        .floor-hnx {
+            background: rgba(59, 130, 246, 0.2);
+            color: #60a5fa;
+        }
+        
+        .floor-upcom {
+            background: rgba(245, 158, 11, 0.2);
+            color: #fbbf24;
+        }
+        
+        .price-ceil { color: var(--purple); font-weight: 600; }
+        .price-floor { color: var(--cyan); font-weight: 600; }
+        .price-ref { color: var(--yellow); font-weight: 600; }
+        .price-up { color: var(--green); font-weight: 600; }
+        .price-down { color: var(--red); font-weight: 600; }
+        .price-neutral { color: var(--yellow); font-weight: 600; }
+        
+        .change-up { color: var(--green); font-weight: 600; }
+        .change-down { color: var(--red); font-weight: 600; }
+        
+        .vol-cell {
+            font-weight: 500;
+            color: var(--text-secondary);
+        }
+        
+        /* Column Groups */
+        .col-group-buy { background: rgba(0, 192, 135, 0.05); }
+        .col-group-sell { background: rgba(255, 77, 77, 0.05); }
+        
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-primary); }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+        
+        /* Loading */
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-secondary);
+        }
+        
+        .spinner {
+            border: 3px solid rgba(255,255,255,0.1);
+            border-top-color: var(--green);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 16px;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Responsive */
+        @media (max-width: 1400px) {
+            .charts-container { grid-template-columns: repeat(2, 1fr); }
+        }
+        
+        @media (max-width: 768px) {
+            .charts-container { grid-template-columns: 1fr; }
+            .topbar { flex-wrap: wrap; }
+            .index-tabs { overflow-x: auto; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Top Bar -->
+    <div class="topbar">
+        <div class="topbar-left">
+            <div class="logo">
+                <span>📊</span>
+                <span>VN Stock iBoard</span>
+            </div>
+            <div class="index-tabs">
+                <div class="index-tab active">
+                    <div class="index-info">
+                        <span style="color: var(--text-secondary);">VNINDEX</span>
+                        <span class="index-value" id="vnindex-val">0.00</span>
+                        <span class="index-change up" id="vnindex-change">+0.00 (+0.00%)</span>
+                    </div>
+                </div>
+                <div class="index-tab">
+                    <div class="index-info">
+                        <span style="color: var(--text-secondary);">VN30</span>
+                        <span class="index-value" id="vn30-val">0.00</span>
+                        <span class="index-change up" id="vn30-change">+0.00 (+0.00%)</span>
+                    </div>
+                </div>
+                <div class="index-tab">
+                    <div class="index-info">
+                        <span style="color: var(--text-secondary);">HNX30</span>
+                        <span class="index-value" id="hnx30-val">0.00</span>
+                        <span class="index-change up" id="hnx30-change">+0.00 (+0.00%)</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="topbar-right">
+            <span>⏰ <span id="current-time">--:--:--</span></span>
+            <span>📈 KLGD: <strong id="total-vol">0</strong></span>
+            <span style="color: var(--green);">▲ <span id="gainers">0</span></span>
+            <span style="color: var(--red);">▼ <span id="losers">0</span></span>
+        </div>
+    </div>
+    
+    <!-- Mini Charts -->
+    <div class="charts-container">
+        <div class="mini-chart">
+            <div class="mini-chart-header">
+                <span class="mini-chart-title">VNINDEX</span>
+                <span class="mini-chart-value up" id="chart1-val">1,717.06</span>
+            </div>
+            <div class="mini-chart-body">
+                <canvas id="chart1"></canvas>
+            </div>
+        </div>
+        <div class="mini-chart">
+            <div class="mini-chart-header">
+                <span class="mini-chart-title">VN30</span>
+                <span class="mini-chart-value up" id="chart2-val">1,950.12</span>
+            </div>
+            <div class="mini-chart-body">
+                <canvas id="chart2"></canvas>
+            </div>
+        </div>
+        <div class="mini-chart">
+            <div class="mini-chart-header">
+                <span class="mini-chart-title">HNX30</span>
+                <span class="mini-chart-value up" id="chart3-val">566.79</span>
+            </div>
+            <div class="mini-chart-body">
+                <canvas id="chart3"></canvas>
+            </div>
+        </div>
+        <div class="mini-chart">
+            <div class="mini-chart-header">
+                <span class="mini-chart-title">HNXINDEX</span>
+                <span class="mini-chart-value up" id="chart4-val">258.87</span>
+            </div>
+            <div class="mini-chart-body">
+                <canvas id="chart4"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Price Table -->
+    <div class="table-container">
+        <div id="loading" class="loading">
+            <div class="spinner"></div>
+            <p>Đang tải dữ liệu thị trường...</p>
+        </div>
+        
+        <table class="price-table" id="priceTable" style="display: none;">
+            <thead>
+                <tr>
+                    <th rowspan="2" style="position: sticky; left: 0; z-index: 2; background: var(--bg-card);">Mã CK</th>
+                    <th rowspan="2">Sàn</th>
+                    <th rowspan="2">TC</th>
+                    <th colspan="3" class="group col-group-buy">Bên mua</th>
+                    <th colspan="3" class="group">Khớp lệnh</th>
+                    <th colspan="3" class="group col-group-sell">Bên bán</th>
+                    <th rowspan="2">Tổng KL</th>
+                    <th rowspan="2">Cao</th>
+                    <th rowspan="2">Thấp</th>
+                    <th rowspan="2">NN mua</th>
+                    <th rowspan="2">NN bán</th>
+                    <th rowspan="2">Room</th>
+                </tr>
+                <tr>
+                    <th class="col-group-buy">Giá 3</th>
+                    <th class="col-group-buy">KL 3</th>
+                    <th class="col-group-buy">Giá 2</th>
+                    <th>KL</th>
+                    <th>Giá</th>
+                    <th>+/-</th>
+                    <th class="col-group-sell">Giá 1</th>
+                    <th class="col-group-sell">KL 1</th>
+                    <th class="col-group-sell">Giá 2</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody">
+                <!-- Data will be inserted here -->
+            </tbody>
+        </table>
+    </div>
+    
+    <script>
+        const API = window.location.origin;
+        let stockData = [];
+        let charts = {};
+        
+        // Format number
+        function fmt(n) {
+            if (n >= 1e9) return (n/1e9).toFixed(1) + 'B';
+            if (n >= 1e6) return (n/1e6).toFixed(1) + 'M';
+            if (n >= 1e3) return (n/1e3).toFixed(0) + 'K';
+            return n.toFixed(0);
+        }
+        
+        function fmtPrice(p) {
+            return (p * 1000).toLocaleString('vi-VN');
+        }
+        
+        // Update time
+        function updateTime() {
+            const now = new Date();
+            document.getElementById('current-time').textContent = now.toLocaleTimeString('vi-VN');
+        }
+        setInterval(updateTime, 1000);
+        updateTime();
+        
+        // Initialize mini charts
+        function initCharts() {
+            const chartConfig = {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        data: [],
+                        borderColor: '#00c087',
+                        backgroundColor: 'rgba(0, 192, 135, 0.1)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { display: false },
+                        y: { display: false }
+                    }
+                }
+            };
+            
+            for (let i = 1; i <= 4; i++) {
+                const ctx = document.getElementById(`chart${i}`).getContext('2d');
+                charts[`chart${i}`] = new Chart(ctx, JSON.parse(JSON.stringify(chartConfig)));
+                
+                // Generate random data for demo
+                const labels = [];
+                const data = [];
+                let base = 1000 + Math.random() * 500;
+                for (let j = 0; j < 30; j++) {
+                    labels.push('');
+                    base += (Math.random() - 0.5) * 20;
+                    data.push(base);
+                }
+                charts[`chart${i}`].data.labels = labels;
+                charts[`chart${i}`].data.datasets[0].data = data;
+                charts[`chart${i}`].update();
+            }
+        }
+        
+        // Load stock data
+        async function loadData() {
+            try {
+                const response = await fetch(`${API}/api/stocks`);
+                const data = await response.json();
+                
+                if (data.stocks && data.stocks.length > 0) {
+                    stockData = data.stocks.slice(0, 30); // Top 30 stocks
+                    renderTable();
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('priceTable').style.display = 'table';
+                }
+            } catch (e) {
+                console.error('Error loading data:', e);
+                document.getElementById('loading').innerHTML = '<p style="color: var(--red);">Lỗi tải dữ liệu. Đang thử lại...</p>';
+                setTimeout(loadData, 3000);
+            }
+        }
+        
+        // Render table
+        function renderTable() {
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+            
+            let gainers = 0, losers = 0;
+            
+            stockData.forEach(stock => {
+                const row = document.createElement('tr');
+                
+                // Simulate price data
+                const refPrice = 50 + Math.random() * 50;
+                const currentPrice = refPrice * (1 + (Math.random() - 0.5) * 0.05);
+                const change = currentPrice - refPrice;
+                const changePct = (change / refPrice) * 100;
+                
+                if (change > 0) gainers++;
+                if (change < 0) losers++;
+                
+                const priceClass = change > 0 ? 'price-up' : change < 0 ? 'price-down' : 'price-ref';
+                const changeClass = change > 0 ? 'change-up' : 'change-down';
+                
+                const floor = stock.sector === 'Banking' || stock.sector === 'Real Estate' ? 'HOSE' : 
+                             stock.sector === 'Technology' ? 'HNX' : 'UPCOM';
+                const floorClass = floor === 'HOSE' ? 'floor-hose' : floor === 'HNX' ? 'floor-hnx' : 'floor-upcom';
+                
+                row.innerHTML = `
+                    <td class="ticker-cell">${stock.symbol}</td>
+                    <td><span class="floor-cell ${floorClass}">${floor}</span></td>
+                    <td class="price-ref">${fmtPrice(refPrice)}</td>
+                    <td class="col-group-buy price-up">${fmtPrice(currentPrice * 0.98)}</td>
+                    <td class="col-group-buy vol-cell">${fmt(Math.random() * 100000)}</td>
+                    <td class="col-group-buy price-up">${fmtPrice(currentPrice * 0.99)}</td>
+                    <td class="vol-cell">${fmt(Math.random() * 1000000)}</td>
+                    <td class="${priceClass}">${fmtPrice(currentPrice)}</td>
+                    <td class="${changeClass}">${change > 0 ? '+' : ''}${change.toFixed(2)} (${changePct.toFixed(2)}%)</td>
+                    <td class="col-group-sell price-down">${fmtPrice(currentPrice * 1.01)}</td>
+                    <td class="col-group-sell vol-cell">${fmt(Math.random() * 100000)}</td>
+                    <td class="col-group-sell price-down">${fmtPrice(currentPrice * 1.02)}</td>
+                    <td class="vol-cell">${fmt(Math.random() * 5000000)}</td>
+                    <td class="price-ceil">${fmtPrice(currentPrice * 1.07)}</td>
+                    <td class="price-floor">${fmtPrice(currentPrice * 0.93)}</td>
+                    <td class="vol-cell change-up">${fmt(Math.random() * 50000)}</td>
+                    <td class="vol-cell change-down">${fmt(Math.random() * 30000)}</td>
+                    <td class="vol-cell">${fmt(Math.random() * 1000000)}</td>
+                `;
+                tbody.appendChild(row);
+            });
+            
+            // Update stats
+            document.getElementById('gainers').textContent = gainers;
+            document.getElementById('losers').textContent = losers;
+            document.getElementById('total-vol').textContent = fmt(Math.random() * 1e9);
+        }
+        
+        // Initialize
+        initCharts();
+        loadData();
+        
+        // Auto refresh every 5 seconds
+        setInterval(() => {
+            renderTable();
+        }, 5000);
+    </script>
+</body>
+</html>
