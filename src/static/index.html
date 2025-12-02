@@ -233,6 +233,9 @@
         .news-sentiment.negative { background: var(--danger-light); color: var(--danger); }
         .news-sentiment.neutral { background: rgba(148,163,184,0.15); color: var(--text-muted); }
         .news-impact { font-size: 0.8rem; margin-top: 10px; padding: 10px 14px; background: var(--accent-light); border-radius: 8px; border-left: 3px solid var(--accent); }
+        .news-relevance { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 12px; font-size: 0.7rem; font-weight: 600; background: rgba(139,92,246,0.1); color: var(--purple); }
+        .news-features { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
+        .feature-tag { font-size: 0.65rem; padding: 3px 8px; background: rgba(59,130,246,0.1); color: var(--accent); border-radius: 8px; }
         
         /* Toast */
         .toast { position: fixed; bottom: 24px; right: 24px; padding: 16px 24px; border-radius: 12px; background: var(--gradient-success); color: white; display: none; z-index: 1000; animation: slideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: var(--shadow-lg); font-weight: 500; }
@@ -575,6 +578,7 @@
                                 <input type="date" id="newsDateFilter" class="input" title="Lọc theo ngày">
                                 <button class="btn btn-outline btn-sm" onclick="clearNewsFilters()"><i class="fas fa-times"></i> Xóa lọc</button>
                                 <button class="btn btn-primary btn-sm" onclick="loadNews()"><i class="fas fa-sync-alt"></i> Cập nhật</button>
+                                <button class="btn btn-outline btn-sm" onclick="showFeaturesInfo()" title="Xem các đặc trưng đánh giá"><i class="fas fa-info-circle"></i> Features</button>
                             </div>
                         </div>
                         <div class="card-body">
@@ -1641,6 +1645,20 @@
                         <a href="${n.url || '#'}" target="_blank" rel="noopener" class="news-item ${n.sentiment}" style="display:block;text-decoration:none;color:inherit;">
                             <div class="news-title">${n.title} <i class="fas fa-external-link-alt" style="font-size:0.7rem;opacity:0.5;margin-left:4px;"></i></div>
                             <div class="news-summary">${n.summary}</div>
+                            ${n.relevance_score !== undefined ? `
+                            <div style="margin-top:10px;padding:10px;background:rgba(139,92,246,0.05);border-radius:8px;border-left:3px solid var(--purple);">
+                                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                                    <span style="font-size:0.75rem;font-weight:600;color:var(--purple);">🎯 Độ liên quan: ${(n.relevance_score * 100).toFixed(0)}%</span>
+                                    <span style="font-size:0.7rem;">${n.relevance_confidence}</span>
+                                </div>
+                                <div style="font-size:0.7rem;color:var(--text-secondary);margin-bottom:6px;">${n.relevance_explanation}</div>
+                                ${n.matched_features && n.matched_features.length > 0 ? `
+                                <div class="news-features">
+                                    ${n.matched_features.map(f => `<span class="feature-tag">${f}</span>`).join('')}
+                                </div>
+                                ` : ''}
+                            </div>
+                            ` : ''}
                             <div class="news-impact">${n.impact}</div>
                             <div class="news-meta">
                                 <span>
@@ -1662,6 +1680,116 @@
             } catch (e) {
                 newsList.innerHTML = `<div style="text-align:center;padding:40px;color:var(--danger);"><i class="fas fa-exclamation-circle" style="font-size:2rem;margin-bottom:16px;"></i><p>Lỗi: ${e.message}</p></div>`;
                 toast('Lỗi tải tin tức', 'error');
+            }
+        }
+        
+        async function showFeaturesInfo() {
+            const symbol = document.getElementById('newsSymbol').value;
+            
+            if (!symbol) {
+                toast('Vui lòng chọn mã cổ phiếu trước', 'warning');
+                return;
+            }
+            
+            try {
+                // Fetch sentiment features
+                const sentimentR = await fetch(`${API}/api/news/features/sentiment`);
+                const sentimentData = await sentimentR.json();
+                
+                // Fetch relevance features
+                const relevanceR = await fetch(`${API}/api/news/features/relevance/${symbol}`);
+                const relevanceData = await relevanceR.json();
+                
+                // Create modal content
+                let html = `
+                    <div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;" onclick="this.remove()">
+                        <div style="background:var(--bg-secondary);border-radius:16px;max-width:900px;width:100%;max-height:90vh;overflow-y:auto;padding:30px;box-shadow:var(--shadow-xl);" onclick="event.stopPropagation()">
+                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;">
+                                <h2 style="font-size:1.5rem;color:var(--accent);margin:0;"><i class="fas fa-brain"></i> Đặc trưng phân tích ${symbol}</h2>
+                                <button onclick="this.closest('div[style*=fixed]').remove()" style="background:none;border:none;font-size:1.5rem;color:var(--text-muted);cursor:pointer;">&times;</button>
+                            </div>
+                            
+                            <!-- Sentiment Features -->
+                            <div style="background:var(--bg-primary);border-radius:12px;padding:20px;margin-bottom:20px;">
+                                <h3 style="color:var(--success);margin-top:0;"><i class="fas fa-smile"></i> Sentiment Analysis (Keyword-based)</h3>
+                                <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:16px;">${sentimentData.description}</p>
+                                
+                                <div style="margin-bottom:16px;">
+                                    <strong style="color:var(--success);">✅ Positive Keywords (${sentimentData.features.positive_keywords.count} từ):</strong>
+                                    <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;">
+                                        ${sentimentData.features.positive_keywords.examples.map(kw => 
+                                            `<span style="font-size:0.75rem;padding:4px 10px;background:var(--success-light);color:var(--success);border-radius:12px;">${kw}</span>`
+                                        ).join('')}
+                                    </div>
+                                    <div style="margin-top:8px;font-size:0.8rem;color:var(--text-muted);">
+                                        <strong>Danh mục:</strong> ${sentimentData.features.positive_keywords.categories.join(' • ')}
+                                    </div>
+                                </div>
+                                
+                                <div style="margin-bottom:16px;">
+                                    <strong style="color:var(--danger);">❌ Negative Keywords (${sentimentData.features.negative_keywords.count} từ):</strong>
+                                    <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;">
+                                        ${sentimentData.features.negative_keywords.examples.map(kw => 
+                                            `<span style="font-size:0.75rem;padding:4px 10px;background:var(--danger-light);color:var(--danger);border-radius:12px;">${kw}</span>`
+                                        ).join('')}
+                                    </div>
+                                    <div style="margin-top:8px;font-size:0.8rem;color:var(--text-muted);">
+                                        <strong>Danh mục:</strong> ${sentimentData.features.negative_keywords.categories.join(' • ')}
+                                    </div>
+                                </div>
+                                
+                                <div style="background:var(--accent-light);padding:12px;border-radius:8px;font-size:0.85rem;">
+                                    <strong>📊 Công thức tính điểm:</strong> ${sentimentData.scoring.formula}<br>
+                                    <strong>📏 Phạm vi:</strong> ${sentimentData.scoring.range}<br>
+                                    <strong>🎯 Phân loại:</strong> Positive (${sentimentData.scoring.classification.positive}) • Neutral (${sentimentData.scoring.classification.neutral}) • Negative (${sentimentData.scoring.classification.negative})
+                                </div>
+                            </div>
+                            
+                            <!-- Relevance Features -->
+                            ${relevanceData.status === 'available' ? `
+                            <div style="background:var(--bg-primary);border-radius:12px;padding:20px;">
+                                <h3 style="color:var(--purple);margin-top:0;"><i class="fas fa-bullseye"></i> Relevance Model (TF-IDF)</h3>
+                                <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:16px;">Tổng cộng <strong>${relevanceData.total_keywords} keywords</strong> được sử dụng để tính độ liên quan</p>
+                                
+                                ${Object.entries(relevanceData.features).map(([key, feature]) => `
+                                    <div style="margin-bottom:16px;padding:12px;background:var(--bg-secondary);border-radius:8px;">
+                                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                                            <strong style="color:var(--accent);">${key === 'exact_match' ? '🎯 Exact Match' : key === 'company_name' ? '🏢 Company Name' : key === 'aliases' ? '📝 Aliases' : key === 'keywords' ? '🔑 Keywords' : '🏭 Industry'}</strong>
+                                            <span style="font-size:0.9rem;color:var(--purple);font-weight:600;">Trọng số: ${feature.weight}</span>
+                                        </div>
+                                        <p style="font-size:0.8rem;color:var(--text-secondary);margin:8px 0;">${feature.description}</p>
+                                        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;">
+                                            ${feature.examples.map(ex => 
+                                                `<span style="font-size:0.75rem;padding:4px 10px;background:rgba(139,92,246,0.1);color:var(--purple);border-radius:12px;">${ex}</span>`
+                                            ).join('')}
+                                        </div>
+                                    </div>
+                                `).join('')}
+                                
+                                <div style="background:linear-gradient(135deg,rgba(139,92,246,0.1),rgba(59,130,246,0.1));padding:14px;border-radius:8px;font-size:0.85rem;margin-top:16px;">
+                                    <strong>💡 Cách tính điểm liên quan:</strong><br>
+                                    Mỗi tin tức được đánh giá dựa trên 5 yếu tố trên. Điểm tổng (0-1) quyết định mức độ liên quan:<br>
+                                    🟢 <strong>≥0.7:</strong> Tin trực tiếp về ${symbol}<br>
+                                    🟡 <strong>0.4-0.7:</strong> Tin liên quan đến ${symbol}<br>
+                                    🟠 <strong>0.2-0.4:</strong> Có thể ảnh hưởng ${symbol}<br>
+                                    ⚪ <strong><0.2:</strong> Tin thị trường chung
+                                </div>
+                            </div>
+                            ` : `
+                            <div style="background:var(--warning-light);padding:20px;border-radius:12px;text-align:center;">
+                                <i class="fas fa-exclamation-triangle" style="font-size:2rem;color:var(--warning);margin-bottom:12px;"></i>
+                                <p style="color:var(--warning);margin:0;">Chưa có profile cho ${symbol}. Chỉ sử dụng exact match.</p>
+                            </div>
+                            `}
+                        </div>
+                    </div>
+                `;
+                
+                document.body.insertAdjacentHTML('beforeend', html);
+                
+            } catch (e) {
+                console.error(e);
+                toast('Lỗi tải thông tin features', 'error');
             }
         }
     </script>

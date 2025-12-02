@@ -1479,6 +1479,7 @@ async def get_latest_sentiment(symbol: str, db: Session = Depends(get_db)):
 # =====================================================
 
 from src.news_service import news_service
+from src.news_relevance import relevance_model
 
 @app.get("/api/news", tags=["News"])
 async def get_market_news(limit: int = 20):
@@ -1508,10 +1509,34 @@ async def get_market_news(limit: int = 20):
 
 @app.get("/api/news/{symbol}", tags=["News"])
 async def get_stock_news(symbol: str, limit: int = 20):
-    """Lấy tin tức cho một mã cổ phiếu cụ thể với phân tích sentiment"""
+    """Lấy tin tức cho một mã cổ phiếu cụ thể với phân tích sentiment và relevance"""
     try:
         news = news_service.get_all_news(symbol=symbol.upper(), limit=limit)
         summary = news_service.get_sentiment_summary(symbol.upper())
+        
+        # Calculate relevance scores for each news
+        news_with_relevance = []
+        for n in news:
+            text = f"{n.title} {n.summary}"
+            relevance = relevance_model.calculate_relevance_score(text, symbol.upper())
+            
+            news_with_relevance.append({
+                "title": n.title,
+                "summary": n.summary,
+                "url": n.url,
+                "source": n.source,
+                "published_at": n.published_at,
+                "sentiment": n.sentiment.value,
+                "sentiment_score": round(n.sentiment_score, 2),
+                "impact": n.impact_prediction,
+                "relevance_score": relevance["relevance_score"],
+                "relevance_confidence": relevance["confidence"],
+                "relevance_explanation": relevance["explanation"],
+                "matched_features": relevance["matched_features"]
+            })
+        
+        # Sort by relevance score (highest first)
+        news_with_relevance.sort(key=lambda x: x["relevance_score"], reverse=True)
         
         return {
             "status": "success",
@@ -1524,20 +1549,8 @@ async def get_stock_news(symbol: str, limit: int = 20):
                 "neutral_count": summary.get("neutral_count", 0),
                 "recommendation": summary.get("recommendation", "Đang phân tích...")
             },
-            "total_news": len(news),
-            "news": [
-                {
-                    "title": n.title,
-                    "summary": n.summary,
-                    "url": n.url,
-                    "source": n.source,
-                    "published_at": n.published_at,
-                    "sentiment": n.sentiment.value,
-                    "sentiment_score": round(n.sentiment_score, 2),
-                    "impact": n.impact_prediction
-                }
-                for n in news
-            ]
+            "total_news": len(news_with_relevance),
+            "news": news_with_relevance
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -1551,6 +1564,71 @@ async def get_news_sentiment(symbol: str):
         return {
             "status": "success",
             **summary
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/news/features/sentiment", tags=["News"])
+async def get_sentiment_features():
+    """Lấy danh sách các từ khóa được dùng để phân tích sentiment"""
+    try:
+        from src.news_service import SentimentAnalyzer
+        analyzer = SentimentAnalyzer()
+        
+        return {
+            "status": "success",
+            "method": "keyword-based",
+            "description": "Phân tích sentiment dựa trên từ khóa tiếng Việt",
+            "features": {
+                "positive_keywords": {
+                    "count": len(analyzer.POSITIVE_KEYWORDS),
+                    "examples": analyzer.POSITIVE_KEYWORDS[:20],
+                    "categories": [
+                        "Tài chính (lợi nhuận, doanh thu, tăng trưởng)",
+                        "Kinh doanh (mở rộng, hợp tác, dự án mới)",
+                        "Thị trường (tăng điểm, mua ròng, breakout)",
+                        "Đánh giá (khuyến nghị mua, nâng rating)"
+                    ]
+                },
+                "negative_keywords": {
+                    "count": len(analyzer.NEGATIVE_KEYWORDS),
+                    "examples": analyzer.NEGATIVE_KEYWORDS[:20],
+                    "categories": [
+                        "Tài chính (thua lỗ, nợ xấu, giảm lợi nhuận)",
+                        "Kinh doanh (đóng cửa, sa thải, tranh chấp)",
+                        "Thị trường (giảm sàn, bán tháo, breakdown)",
+                        "Đánh giá (cảnh báo, hạ rating, rủi ro)"
+                    ]
+                },
+                "modifiers": {
+                    "count": len(analyzer.STRONG_MODIFIERS),
+                    "examples": analyzer.STRONG_MODIFIERS,
+                    "description": "Từ nhấn mạnh (tăng hệ số 1.5x)"
+                }
+            },
+            "scoring": {
+                "formula": "(positive_count - negative_count) / total_count",
+                "range": "[-1.0, 1.0]",
+                "classification": {
+                    "positive": "score > 0.2",
+                    "neutral": "-0.2 <= score <= 0.2",
+                    "negative": "score < -0.2"
+                }
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/news/features/relevance/{symbol}", tags=["News"])
+async def get_relevance_features(symbol: str):
+    """Lấy thông tin về features dùng để tính relevance score cho mã cổ phiếu"""
+    try:
+        features = relevance_model.get_features_explanation(symbol.upper())
+        return {
+            "status": "success",
+            **features
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
