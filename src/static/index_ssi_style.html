@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VN Stock AI - iBoard Style</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📈</text></svg>">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        :root {
+            --bg-dark: #0a0e14;
+            --bg-darker: #050810;
+            --bg-card: #131923;
+            --bg-hover: #1a2130;
+            --green: #00c853;
+            --red: #ff1744;
+            --yellow: #ffc107;
+            --blue: #2196f3;
+            --purple: #9c27b0;
+            --text-primary: #ffffff;
+            --text-secondary: #b0bec5;
+            --text-muted: #78909c;
+            --border: #1f2937;
+            --shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: var(--bg-darker);
+            color: var(--text-primary);
+            line-height: 1.5;
+            overflow-x: hidden;
+        }
+        
+        /* Header */
+        .header {
+            background: var(--bg-dark);
+            border-bottom: 1px solid var(--border);
+            padding: 12px 24px;
+            display: flex;
+            align-items: center;
+            gap: 32px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--blue);
+        }
+        
+        .logo svg {
+            width: 32px;
+            height: 32px;
+            fill: var(--blue);
+        }
+        
+        .nav {
+            display: flex;
+            gap: 8px;
+            flex: 1;
+        }
+        
+        .nav-item {
+            padding: 8px 16px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+        
+        .nav-item:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
+        
+        .nav-item.active {
+            background: var(--blue);
+            color: white;
+        }
+        
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        
+        .time {
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+        
+        /* Market Stats Bar */
+        .market-stats {
+            background: var(--bg-dark);
+            padding: 12px 24px;
+            display: flex;
+            gap: 32px;
+            border-bottom: 1px solid var(--border);
+            overflow-x: auto;
+        }
+        
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        
+        .stat-label {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+        
+        .stat-value {
+            font-size: 15px;
+            font-weight: 600;
+        }
+        
+        .stat-change {
+            font-size: 12px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        .stat-change.up { color: var(--green); }
+        .stat-change.down { color: var(--red); }
+        
+        /* Main Layout */
+        .container {
+            display: flex;
+            height: calc(100vh - 120px);
+        }
+        
+        /* Stock Table */
+        .stock-table-container {
+            flex: 1;
+            overflow: auto;
+            background: var(--bg-dark);
+        }
+        
+        .table-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 24px;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .table-tabs {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .tab {
+            padding: 6px 12px;
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            border-radius: 6px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .tab.active {
+            background: var(--blue);
+            color: white;
+            border-color: var(--blue);
+        }
+        
+        .search-box {
+            padding: 6px 12px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-size: 13px;
+            width: 200px;
+        }
+        
+        /* Price Table */
+        .price-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .price-table thead {
+            background: var(--bg-card);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        
+        .price-table th {
+            padding: 12px 16px;
+            text-align: left;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .price-table th.number { text-align: right; }
+        
+        .price-table tbody tr {
+            border-bottom: 1px solid var(--border);
+            transition: background 0.2s;
+            cursor: pointer;
+        }
+        
+        .price-table tbody tr:hover {
+            background: var(--bg-hover);
+        }
+        
+        .price-table td {
+            padding: 10px 16px;
+            font-size: 13px;
+        }
+        
+        .price-table td.number {
+            text-align: right;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+        }
+        
+        .symbol {
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+        
+        .price-up { color: var(--green) !important; }
+        .price-down { color: var(--red) !important; }
+        .price-ref { color: var(--yellow) !important; }
+        .price-ceil { color: var(--purple) !important; }
+        .price-floor { color: var(--blue) !important; }
+        
+        .volume {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+        
+        /* Right Panel - Chart & Analysis */
+        .right-panel {
+            width: 500px;
+            background: var(--bg-dark);
+            border-left: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .panel-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .panel-title {
+            font-size: 16px;
+            font-weight: 600;
+        }
+        
+        .selected-stock {
+            font-size: 14px;
+            color: var(--blue);
+            font-weight: 600;
+        }
+        
+        .panel-content {
+            flex: 1;
+            overflow: auto;
+            padding: 20px;
+        }
+        
+        .chart-container {
+            background: var(--bg-card);
+            border-radius: 8px;
+            padding: 16px;
+            height: 350px;
+            margin-bottom: 20px;
+        }
+        
+        .info-section {
+            background: var(--bg-card);
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        
+        .info-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+            text-transform: uppercase;
+        }
+        
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+        }
+        
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+        }
+        
+        .info-label {
+            color: var(--text-secondary);
+        }
+        
+        .info-value {
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        
+        /* Prediction Panel */
+        .prediction-panel {
+            background: var(--bg-card);
+            border-radius: 8px;
+            padding: 16px;
+        }
+        
+        .prediction-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        
+        .prediction-result {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+        
+        .prediction-detail {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+        }
+        
+        .confidence-bar {
+            height: 6px;
+            background: var(--border);
+            border-radius: 3px;
+            overflow: hidden;
+            margin-bottom: 8px;
+        }
+        
+        .confidence-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--blue), var(--purple));
+            border-radius: 3px;
+            transition: width 0.3s;
+        }
+        
+        .confidence-text {
+            font-size: 12px;
+            color: var(--text-secondary);
+            text-align: right;
+        }
+        
+        .action-btn {
+            width: 100%;
+            padding: 12px;
+            background: var(--blue);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .action-btn:hover {
+            background: #1976d2;
+            transform: translateY(-1px);
+        }
+        
+        .action-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        /* Loading */
+        .loading {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: var(--bg-darker);
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: #374151;
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <div class="header">
+        <div class="logo">
+            <svg viewBox="0 0 24 24"><path d="M3.5 18.5L9.5 12.5L13.5 16.5L22 6.92L20.59 5.5L13.5 13.5L9.5 9.5L2 17L3.5 18.5Z"/></svg>
+            <span>VN Stock AI</span>
+        </div>
+        
+        <div class="nav">
+            <div class="nav-item active">Bảng giá</div>
+            <div class="nav-item">Dự đoán ML</div>
+            <div class="nav-item">Tin tức</div>
+            <div class="nav-item">Phân tích</div>
+        </div>
+        
+        <div class="header-right">
+            <div class="time" id="currentTime">20:37:00</div>
+        </div>
+    </div>
+    
+    <!-- Market Stats -->
+    <div class="market-stats">
+        <div class="stat-item">
+            <div class="stat-label">VNINDEX</div>
+            <div class="stat-value">1,717.06</div>
+            <div class="stat-change up">▲ 13.39 (+0.78%)</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-label">VN30</div>
+            <div class="stat-value">1,950.12</div>
+            <div class="stat-change up">▲ 16.56 (+0.86%)</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-label">HNX30</div>
+            <div class="stat-value">566.79</div>
+            <div class="stat-change up">▲ 5.58 (+0.99%)</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-label">VNXALL</div>
+            <div class="stat-value">2,891.36</div>
+            <div class="stat-change up">▲ 19.11 (+0.67%)</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-label">KLGD (Triệu)</div>
+            <div class="stat-value">305.991</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-label">GTGD (Tỷ)</div>
+            <div class="stat-value">13,177.714</div>
+        </div>
+    </div>
+    
+    <!-- Main Container -->
+    <div class="container">
+        <!-- Stock Table -->
+        <div class="stock-table-container">
+            <div class="table-header">
+                <div class="table-tabs">
+                    <button class="tab active">VN30</button>
+                    <button class="tab">HNX30</button>
+                    <button class="tab">HOSE</button>
+                    <button class="tab">HNX</button>
+                    <button class="tab">UPCOM</button>
+                </div>
+                <input type="text" class="search-box" placeholder="Tìm kiếm CK..." id="searchBox">
+            </div>
+            
+            <table class="price-table">
+                <thead>
+                    <tr>
+                        <th>CK</th>
+                        <th>Trần</th>
+                        <th>Sàn</th>
+                        <th>TC</th>
+                        <th class="number">Giá 3</th>
+                        <th class="number">KL 3</th>
+                        <th class="number">Giá 2</th>
+                        <th class="number">KL 2</th>
+                        <th class="number">Giá 1</th>
+                        <th class="number">KL 1</th>
+                        <th class="number">Giá</th>
+                        <th class="number">KL</th>
+                        <th class="number">+/-</th>
+                        <th class="number">+/- (%)</th>
+                        <th class="number">Giá 1</th>
+                        <th class="number">KL 1</th>
+                        <th class="number">Giá 2</th>
+                        <th class="number">KL 2</th>
+                        <th class="number">Giá 3</th>
+                        <th class="number">KL 3</th>
+                        <th class="number">Tổng KL</th>
+                    </tr>
+                </thead>
+                <tbody id="priceTableBody">
+                    <!-- Data will be loaded here -->
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Right Panel -->
+        <div class="right-panel">
+            <div class="panel-header">
+                <div class="panel-title">Dự đoán ML</div>
+                <div class="selected-stock" id="selectedStock">Chọn mã CK</div>
+            </div>
+            
+            <div class="panel-content">
+                <!-- Chart -->
+                <div class="chart-container">
+                    <canvas id="priceChart"></canvas>
+                </div>
+                
+                <!-- Stock Info -->
+                <div class="info-section">
+                    <div class="info-title">Thông tin cổ phiếu</div>
+                    <div class="info-grid">
+                        <div class="info-item">
+                            <span class="info-label">Giá hiện tại</span>
+                            <span class="info-value" id="currentPrice">--</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Thay đổi</span>
+                            <span class="info-value" id="priceChange">--</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Cao nhất</span>
+                            <span class="info-value" id="highPrice">--</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Thấp nhất</span>
+                            <span class="info-value" id="lowPrice">--</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Khối lượng</span>
+                            <span class="info-value" id="volume">--</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Giá trị</span>
+                            <span class="info-value" id="value">--</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Prediction -->
+                <div class="prediction-panel">
+                    <div class="prediction-header">
+                        <div class="info-title">Dự đoán giá (ML)</div>
+                    </div>
+                    
+                    <div id="predictionResult" style="display:none;">
+                        <div class="prediction-result" id="predPrice">--</div>
+                        <div class="prediction-detail" id="predDetail">--</div>
+                        <div class="confidence-bar">
+                            <div class="confidence-fill" id="confidenceFill"></div>
+                        </div>
+                        <div class="confidence-text" id="confidenceText">--</div>
+                    </div>
+                    
+                    <button class="action-btn" id="predictBtn" onclick="runPrediction()">
+                        <span id="btnText">Chạy dự đoán ML</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API = window.location.origin;
+        let chart = null;
+        let selectedSymbol = null;
+        
+        // VN30 Stocks
+        const VN30_STOCKS = [
+            'ACB', 'BCM', 'BID', 'BVH', 'CTG', 'FPT', 'GAS', 'GVR', 'HDB', 'HPG',
+            'LPB', 'MBB', 'MSN', 'MWG', 'PDR', 'PLX', 'POW', 'SAB', 'SSI', 'STB',
+            'TCB', 'TPB', 'VCB', 'VHM', 'VIB', 'VIC', 'VJC', 'VNM', 'VPB', 'VRE'
+        ];
+        
+        // Update time
+        function updateTime() {
+            const now = new Date();
+            document.getElementById('currentTime').textContent = now.toLocaleTimeString('vi-VN');
+        }
+        setInterval(updateTime, 1000);
+        
+        // Load stock data
+        async function loadStockData() {
+            const tbody = document.getElementById('priceTableBody');
+            tbody.innerHTML = '<tr><td colspan="21" style="text-align:center;padding:40px;color:var(--text-secondary);">Đang tải dữ liệu...</td></tr>';
+            
+            try {
+                const response = await fetch(`${API}/api/stocks`);
+                const stocks = await response.json();
+                
+                tbody.innerHTML = '';
+                
+                for (const stock of stocks.filter(s => VN30_STOCKS.includes(s.symbol))) {
+                    const tr = document.createElement('tr');
+                    tr.onclick = () => selectStock(stock.symbol);
+                    
+                    // Generate random data for demo
+                    const price = (Math.random() * 100 + 20).toFixed(2);
+                    const change = (Math.random() * 4 - 2).toFixed(2);
+                    const changeClass = change >= 0 ? 'price-up' : 'price-down';
+                    const vol = Math.floor(Math.random() * 1000000);
+                    
+                    tr.innerHTML = `
+                        <td><span class="symbol">${stock.symbol}</span></td>
+                        <td class="number price-ceil">${(price * 1.07).toFixed(2)}</td>
+                        <td class="number price-floor">${(price * 0.93).toFixed(2)}</td>
+                        <td class="number price-ref">${price}</td>
+                        <td class="number">${(price * 0.99).toFixed(2)}</td>
+                        <td class="number volume">${formatVol(Math.floor(vol * 0.1))}</td>
+                        <td class="number">${(price * 0.995).toFixed(2)}</td>
+                        <td class="number volume">${formatVol(Math.floor(vol * 0.2))}</td>
+                        <td class="number">${(price * 0.998).toFixed(2)}</td>
+                        <td class="number volume">${formatVol(Math.floor(vol * 0.3))}</td>
+                        <td class="number ${changeClass}">${price}</td>
+                        <td class="number volume">${formatVol(vol)}</td>
+                        <td class="number ${changeClass}">${change >= 0 ? '+' : ''}${change}</td>
+                        <td class="number ${changeClass}">${change >= 0 ? '+' : ''}${((change/price)*100).toFixed(2)}%</td>
+                        <td class="number">${(price * 1.002).toFixed(2)}</td>
+                        <td class="number volume">${formatVol(Math.floor(vol * 0.3))}</td>
+                        <td class="number">${(price * 1.005).toFixed(2)}</td>
+                        <td class="number volume">${formatVol(Math.floor(vol * 0.2))}</td>
+                        <td class="number">${(price * 1.01).toFixed(2)}</td>
+                        <td class="number volume">${formatVol(Math.floor(vol * 0.1))}</td>
+                        <td class="number volume">${formatVol(vol * 2)}</td>
+                    `;
+                    
+                    tbody.appendChild(tr);
+                }
+            } catch (error) {
+                console.error('Error loading stocks:', error);
+                tbody.innerHTML = '<tr><td colspan="21" style="text-align:center;padding:40px;color:var(--red);">Lỗi tải dữ liệu</td></tr>';
+            }
+        }
+        
+        // Select stock
+        function selectStock(symbol) {
+            selectedSymbol = symbol;
+            document.getElementById('selectedStock').textContent = symbol;
+            loadStockChart(symbol);
+            loadStockInfo(symbol);
+        }
+        
+        // Load stock chart
+        async function loadStockChart(symbol) {
+            try {
+                const response = await fetch(`${API}/api/prices/${symbol}?days=30`);
+                const data = await response.json();
+                
+                if (!data.prices || data.prices.length === 0) {
+                    return;
+                }
+                
+                const labels = data.prices.map(p => new Date(p.date).toLocaleDateString('vi-VN'));
+                const prices = data.prices.map(p => p.close);
+                
+                if (chart) {
+                    chart.destroy();
+                }
+                
+                const ctx = document.getElementById('priceChart').getContext('2d');
+                chart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels,
+                        datasets: [{
+                            label: 'Giá đóng cửa',
+                            data: prices,
+                            borderColor: '#2196f3',
+                            backgroundColor: 'rgba(33, 150, 243, 0.1)',
+                            borderWidth: 2,
+                            tension: 0.4,
+                            fill: true,
+                            pointRadius: 0,
+                            pointHoverRadius: 4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false }
+                        },
+                        scales: {
+                            x: {
+                                grid: { color: '#1f2937', drawBorder: false },
+                                ticks: { color: '#78909c', maxTicksLimit: 8 }
+                            },
+                            y: {
+                                grid: { color: '#1f2937', drawBorder: false },
+                                ticks: { color: '#78909c' }
+                            }
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error('Error loading chart:', error);
+            }
+        }
+        
+        // Load stock info
+        async function loadStockInfo(symbol) {
+            try {
+                const response = await fetch(`${API}/api/prices/${symbol}?days=1`);
+                const data = await response.json();
+                
+                if (data.prices && data.prices.length > 0) {
+                    const latest = data.prices[data.prices.length - 1];
+                    const change = latest.close - latest.open;
+                    const changePercent = (change / latest.open * 100).toFixed(2);
+                    const changeClass = change >= 0 ? 'price-up' : 'price-down';
+                    
+                    document.getElementById('currentPrice').textContent = formatPrice(latest.close);
+                    document.getElementById('priceChange').innerHTML = `<span class="${changeClass}">${change >= 0 ? '+' : ''}${formatPrice(change)} (${change >= 0 ? '+' : ''}${changePercent}%)</span>`;
+                    document.getElementById('highPrice').textContent = formatPrice(latest.high);
+                    document.getElementById('lowPrice').textContent = formatPrice(latest.low);
+                    document.getElementById('volume').textContent = formatVol(latest.volume);
+                    document.getElementById('value').textContent = formatVol(latest.volume * latest.close / 1000) + ' tỷ';
+                }
+            } catch (error) {
+                console.error('Error loading stock info:', error);
+            }
+        }
+        
+        // Run prediction
+        async function runPrediction() {
+            if (!selectedSymbol) {
+                alert('Vui lòng chọn mã cổ phiếu!');
+                return;
+            }
+            
+            const btn = document.getElementById('predictBtn');
+            const btnText = document.getElementById('btnText');
+            
+            btn.disabled = true;
+            btnText.innerHTML = '<span class="loading"></span> Đang dự đoán...';
+            
+            try {
+                const response = await fetch(`${API}/api/ml/predict`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ symbol: selectedSymbol, periods: 5 })
+                });
+                
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    const predictions = result.predictions;
+                    const lastPrice = predictions[predictions.length - 1];
+                    const currentPrice = result.current_price;
+                    const change = ((lastPrice - currentPrice) / currentPrice * 100).toFixed(2);
+                    const direction = change >= 0 ? 'up' : 'down';
+                    const confidence = result.confidence || 65;
+                    
+                    document.getElementById('predPrice').textContent = formatPrice(lastPrice);
+                    document.getElementById('predPrice').className = 'prediction-result ' + (direction === 'up' ? 'price-up' : 'price-down');
+                    document.getElementById('predDetail').textContent = `Từ ${formatPrice(currentPrice)} → ${formatPrice(lastPrice)} (${change >= 0 ? '+' : ''}${change}%)`;
+                    document.getElementById('confidenceFill').style.width = confidence + '%';
+                    document.getElementById('confidenceText').textContent = `Độ tin cậy: ${confidence}%`;
+                    document.getElementById('predictionResult').style.display = 'block';
+                } else {
+                    alert('Lỗi dự đoán: ' + (result.message || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Error running prediction:', error);
+                alert('Lỗi kết nối API');
+            } finally {
+                btn.disabled = false;
+                btnText.textContent = 'Chạy dự đoán ML';
+            }
+        }
+        
+        // Format helpers
+        function formatPrice(price) {
+            return new Intl.NumberFormat('vi-VN').format(price * 1000);
+        }
+        
+        function formatVol(vol) {
+            if (vol >= 1000000) return (vol / 1000000).toFixed(2) + 'M';
+            if (vol >= 1000) return (vol / 1000).toFixed(0) + 'K';
+            return vol.toString();
+        }
+        
+        // Search functionality
+        document.getElementById('searchBox').addEventListener('input', (e) => {
+            const search = e.target.value.toUpperCase();
+            const rows = document.querySelectorAll('#priceTableBody tr');
+            
+            rows.forEach(row => {
+                const symbol = row.querySelector('.symbol')?.textContent || '';
+                row.style.display = symbol.includes(search) ? '' : 'none';
+            });
+        });
+        
+        // Initialize
+        loadStockData();
+        setInterval(loadStockData, 30000); // Refresh every 30s
+    </script>
+</body>
+</html>
