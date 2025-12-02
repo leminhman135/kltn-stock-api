@@ -1334,13 +1334,13 @@
                 const labels = [], actual = [], pred = [];
                 cached.slice(-30).forEach(d => { labels.push(d.date); actual.push(d.close); pred.push(null); });
                 
-                // QUAN TRỌNG: Nối dự đoán với điểm cuối cùng của dữ liệu thực tế
-                // Thay null cuối cùng bằng giá cuối để 2 đường nối liền nhau
-                if (pred.length > 0 && actual.length > 0) {
-                    pred[pred.length - 1] = actual[actual.length - 1]; // Điểm nối
+                // QUAN TRỌNG: Điểm cuối của actual cũng là điểm đầu của prediction
+                // Để 2 đường chạm nhau tại điểm giao
+                if (actual.length > 0) {
+                    pred[pred.length - 1] = actual[actual.length - 1]; // Điểm giao nhau
                 }
                 
-                // Add ML predictions to chart
+                // Add ML predictions to chart - bắt đầu từ giá cuối thực tế
                 for (let i = 0; i < mlPredictions.length; i++) {
                     const dt = new Date(); dt.setDate(dt.getDate() + i + 1);
                     labels.push(dt.toISOString().split('T')[0]);
