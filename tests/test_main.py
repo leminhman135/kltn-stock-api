@@ -20,6 +20,11 @@ import os
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
+from src.scheduler.daily_scheduler import init_scheduler
+
+# Start background scheduler
+scheduler = init_scheduler()
+
 
 # =============================================================================
 # Test Data Fixtures

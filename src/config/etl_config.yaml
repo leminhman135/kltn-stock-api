@@ -1,0 +1,117 @@
+# ETL Configuration File
+
+database:
+  # PostgreSQL connection
+  host: ${DB_HOST:localhost}
+  port: ${DB_PORT:5432}
+  database: ${DB_NAME:railway}
+  user: ${DB_USER:postgres}
+  password: ${DB_PASSWORD:}
+  
+  # Tables
+  tables:
+    price_data: "stock_prices"
+    news_raw: "news_articles"
+    news_processed: "news_articles"
+    sentiment_raw: "analyzed_news"
+    sentiment_daily: "sentiment_summary"
+    technical_indicators: "technical_indicators"
+
+etl:
+  # Batch processing
+  batch_size: 1000
+  
+  # Data retention (days)
+  retention_days: 730
+  
+  # Processing flags
+  remove_duplicates: true
+  validate_data: true
+
+technical_indicators:
+  # MACD parameters
+  macd:
+    fast_period: 12
+    slow_period: 26
+    signal_period: 9
+  
+  # RSI parameters
+  rsi:
+    period: 14
+  
+  # Bollinger Bands
+  bollinger:
+    period: 20
+    std_dev: 2
+  
+  # Moving Averages
+  sma:
+    periods: [20, 50, 200]
+  ema:
+    periods: [12, 26]
+
+sentiment:
+  # FinBERT model
+  model_name: "ProsusAI/finbert"
+  
+  # Processing
+  max_length: 512
+  batch_size: 16
+  
+  # Score mapping
+  label_to_score:
+    positive: 1.0
+    neutral: 0.0
+    negative: -1.0
+  
+  # Daily aggregation
+  min_news_count: 1
+
+feature_engineering:
+  # Lag features
+  lag_periods: [1, 3, 7, 14]
+  
+  # Rolling windows
+  rolling_windows: [7, 14, 30]
+  
+  # Scaling
+  scaler: "standard"  # standard, minmax, robust
+  
+  # Missing values
+  fill_method: "ffill"  # ffill, bfill, interpolate
+
+model:
+  # Train/Test split
+  test_size: 0.2
+  validation_size: 0.1
+  
+  # ARIMA
+  arima:
+    order: [1, 1, 1]  # (p, d, q)
+    seasonal_order: [0, 0, 0, 0]
+  
+  # Prophet
+  prophet:
+    changepoint_prior_scale: 0.05
+    seasonality_mode: "multiplicative"
+  
+  # LSTM
+  lstm:
+    units: [128, 64, 32]
+    dropout: 0.2
+    epochs: 100
+    batch_size: 32
+    sequence_length: 60
+  
+  # GRU
+  gru:
+    units: [100, 50]
+    dropout: 0.2
+    epochs: 100
+    batch_size: 32
+    sequence_length: 60
+
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "logs/etl_pipeline.log"

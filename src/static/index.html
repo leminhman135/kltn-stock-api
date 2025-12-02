@@ -1334,19 +1334,43 @@
                 const labels = [], actual = [], pred = [];
                 cached.slice(-30).forEach(d => { labels.push(d.date); actual.push(d.close); pred.push(null); });
                 
-                // QUAN TRỌNG: Để 2 đường nối liền nhau
-                // Điểm cuối của actual = Điểm đầu của prediction
+                // QUAN TRỌNG: Tạo smooth transition từ giá thực tế sang dự đoán
                 const lastActualPrice = actual[actual.length - 1];
                 pred[pred.length - 1] = lastActualPrice; // Điểm nối
                 
-                // Add ML predictions - prediction đầu tiên cũng bằng lastActualPrice để liên tục
-                // Thêm điểm đầu tiên của prediction = lastActualPrice (đã set ở trên)
-                // Sau đó thêm các điểm prediction tiếp theo
-                for (let i = 0; i < mlPredictions.length; i++) {
-                    const dt = new Date(); dt.setDate(dt.getDate() + i + 1);
-                    labels.push(dt.toISOString().split('T')[0]);
-                    actual.push(null);
-                    pred.push(mlPredictions[i]);
+                // Smooth transition: Nội suy từ giá hiện tại sang giá dự đoán đầu tiên
+                // Thay vì nhảy đột ngột, ta sẽ tăng/giảm dần qua các ngày
+                if (mlPredictions.length > 0) {
+                    // Tạo smooth path từ lastActualPrice đến mlPredictions
+                    const smoothSteps = Math.min(3, mlPredictions.length); // Dùng 3 ngày đầu để transition
+                    
+                    for (let i = 0; i < mlPredictions.length; i++) {
+                        const dt = new Date(); 
+                        dt.setDate(dt.getDate() + i + 1);
+                        labels.push(dt.toISOString().split('T')[0]);
+                        actual.push(null);
+                        
+                        // Smooth interpolation cho 3 ngày đầu
+                        if (i < smoothSteps) {
+                            // Linear interpolation: từ lastActualPrice → mlPredictions[smoothSteps-1]
+                            const targetPrice = mlPredictions[smoothSteps - 1];
+                            const ratio = (i + 1) / smoothSteps;
+                            const smoothPrice = lastActualPrice + (targetPrice - lastActualPrice) * ratio;
+                            pred.push(smoothPrice);
+                        } else {
+                            // Sau smoothSteps, dùng prediction thực từ model
+                            pred.push(mlPredictions[i]);
+                        }
+                    }
+                } else {
+                    // Fallback nếu không có predictions
+                    for (let i = 0; i < 7; i++) {
+                        const dt = new Date(); 
+                        dt.setDate(dt.getDate() + i + 1);
+                        labels.push(dt.toISOString().split('T')[0]);
+                        actual.push(null);
+                        pred.push(lastActualPrice);
+                    }
                 }
                 
                 // Get news for display
