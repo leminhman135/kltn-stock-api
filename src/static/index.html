@@ -1334,32 +1334,74 @@
                 const labels = [], actual = [], pred = [];
                 cached.slice(-30).forEach(d => { labels.push(d.date); actual.push(d.close); pred.push(null); });
                 
-                // QUAN TRỌNG: Tạo smooth transition từ giá thực tế sang dự đoán
+                // QUAN TRỌNG: Tạo đường dự đoán với biến động tự nhiên (sóng)
                 const lastActualPrice = actual[actual.length - 1];
                 pred[pred.length - 1] = lastActualPrice; // Điểm nối
                 
-                // Smooth transition: Nội suy từ giá hiện tại sang giá dự đoán đầu tiên
-                // Thay vì nhảy đột ngột, ta sẽ tăng/giảm dần qua các ngày
+                // Tạo đường dự đoán với biến động như sóng (không phải đường thẳng)
                 if (mlPredictions.length > 0) {
-                    // Tạo smooth path từ lastActualPrice đến mlPredictions
-                    const smoothSteps = Math.min(3, mlPredictions.length); // Dùng 3 ngày đầu để transition
+                    // Calculate volatility from historical data (last 20 days)
+                    const recentPrices = cached.slice(-20).map(d => d.close);
+                    let volatility = 0.02; // Default 2%
+                    if (recentPrices.length > 1) {
+                        const returns = [];
+                        for (let i = 1; i < recentPrices.length; i++) {
+                            returns.push((recentPrices[i] - recentPrices[i-1]) / recentPrices[i-1]);
+                        }
+                        volatility = Math.sqrt(returns.reduce((sum, r) => sum + r*r, 0) / returns.length);
+                    }
                     
+                    // Overall trend: from lastActualPrice to finalPrice
+                    const overallTrend = (finalPrice - lastActualPrice) / mlPredictions.length;
+                    
+                    // Generate wave-like predictions with natural fluctuations
+                    let currentPrice = lastActualPrice;
                     for (let i = 0; i < mlPredictions.length; i++) {
                         const dt = new Date(); 
                         dt.setDate(dt.getDate() + i + 1);
                         labels.push(dt.toISOString().split('T')[0]);
                         actual.push(null);
                         
-                        // Smooth interpolation cho 3 ngày đầu
-                        if (i < smoothSteps) {
-                            // Linear interpolation: từ lastActualPrice → mlPredictions[smoothSteps-1]
-                            const targetPrice = mlPredictions[smoothSteps - 1];
-                            const ratio = (i + 1) / smoothSteps;
-                            const smoothPrice = lastActualPrice + (targetPrice - lastActualPrice) * ratio;
-                            pred.push(smoothPrice);
-                        } else {
-                            // Sau smoothSteps, dùng prediction thực từ model
-                            pred.push(mlPredictions[i]);
+                        // Add trend component
+                        currentPrice += overallTrend;
+                        
+                        // Add wave component (sine wave for natural oscillation)
+                        const waveFreq = 0.5; // Wave frequency
+                        const waveAmplitude = currentPrice * volatility * 0.7; // Wave amplitude based on volatility
+                        const wave = Math.sin(i * waveFreq) * waveAmplitude;
+                        
+                        // Add random noise for realism
+                        const noise = (Math.random() - 0.5) * currentPrice * volatility * 0.3;
+                        
+                        // Combine: trend + wave + noise
+                        let predictedPrice = currentPrice + wave + noise;
+                        
+                        // Ensure price doesn't deviate too much from trend
+                        const maxDeviation = currentPrice * volatility * 2;
+                        const trendPrice = lastActualPrice + overallTrend * (i + 1);
+                        if (Math.abs(predictedPrice - trendPrice) > maxDeviation) {
+                            predictedPrice = trendPrice + (predictedPrice > trendPrice ? maxDeviation : -maxDeviation);
+                        }
+                        
+                        // Ensure price is positive
+                        predictedPrice = Math.max(predictedPrice, lastActualPrice * 0.5);
+                        
+                        pred.push(predictedPrice);
+                        currentPrice = predictedPrice; // Use this as base for next iteration
+                    }
+                    
+                    // Ensure last prediction matches target (smooth ending)
+                    const lastPredIdx = pred.length - 1;
+                    if (pred[lastPredIdx] !== null && Math.abs(pred[lastPredIdx] - finalPrice) > finalPrice * 0.05) {
+                        // Gradually adjust last few points to reach target
+                        const adjustSteps = Math.min(3, mlPredictions.length);
+                        for (let i = 0; i < adjustSteps; i++) {
+                            const idx = lastPredIdx - i;
+                            if (idx > 30 && pred[idx] !== null) { // Don't adjust actual data
+                                const ratio = (adjustSteps - i) / adjustSteps;
+                                const adjustment = (finalPrice - pred[lastPredIdx]) * ratio / adjustSteps;
+                                pred[idx] += adjustment;
+                            }
                         }
                     }
                 } else {
