@@ -332,7 +332,7 @@ class StockMLModel:
             return {'success': False, 'error': str(e)}
     
     def predict(self, df: pd.DataFrame, steps: int = 7, model_type: str = 'ensemble') -> Dict:
-        """Make predictions with mean reversion, uncertainty and sentiment"""
+        """Make predictions - realistic approach based on model accuracy"""
         if not self.is_trained:
             return quick_predict(df['close'].tolist(), steps)
         
@@ -340,8 +340,7 @@ class StockMLModel:
             # Lấy sentiment data cho symbol này
             self._sentiment_data = get_sentiment_score(self.symbol)
             if self._sentiment_data:
-                logger.info(f"📰 Sentiment for {self.symbol}: score={self._sentiment_data['score']:.2f}, "
-                           f"pos={self._sentiment_data['positive']}, neg={self._sentiment_data['negative']}")
+                logger.info(f"📰 Sentiment for {self.symbol}: score={self._sentiment_data['score']:.2f}")
             
             data = df.copy().sort_values('date').reset_index(drop=True)
             close = data['close'].values
@@ -350,127 +349,112 @@ class StockMLModel:
             volume = data['volume'].values if 'volume' in data.columns else np.ones(len(close))
             
             last_price = float(close[-1])
-            sma20 = np.mean(close[-20:])
+            sma20 = np.mean(close[-20:]) if len(close) >= 20 else np.mean(close)
+            sma5 = np.mean(close[-5:]) if len(close) >= 5 else np.mean(close)
             
-            # Calculate current market condition indicators
+            # Calculate volatility properly
+            if len(close) >= 31:
+                returns = np.diff(close[-31:]) / close[-31:-1]
+            else:
+                returns = np.diff(close) / close[:-1]
+            daily_vol = np.std(returns) if len(returns) > 0 else 0.02
+            avg_return = np.mean(returns) if len(returns) > 0 else 0
+            
+            # Current indicators
             current_rsi = self.calculate_rsi(close)
             current_bb = self.calculate_bollinger_position(close)
+            
+            # Calculate model confidence from accuracy
+            avg_accuracy = np.mean([m.get('accuracy', 50) for m in self.metrics.values() 
+                                   if isinstance(m, dict) and 'accuracy' in m])
+            baseline_acc = self.metrics.get('baseline', {}).get('accuracy', 50)
+            
+            # Model is useful only if significantly better than baseline
+            model_useful = avg_accuracy > baseline_acc + 3
             
             predictions = []
             prediction_ranges = []
             current_price = last_price
             
-            # Volatility for uncertainty bounds
-            returns = np.diff(close[-30:]) / close[-31:-1]
-            daily_vol = np.std(returns)
-            
             for step in range(steps):
-                # Get fresh features for current state
-                temp_close = np.append(close, current_price) if step > 0 else close
-                temp_high = np.append(high, current_price) if step > 0 else high
-                temp_low = np.append(low, current_price) if step > 0 else low
-                temp_volume = np.append(volume, volume[-1]) if step > 0 else volume
-                
-                # Create single feature row for prediction
-                feature_row = self._create_single_feature(temp_close, temp_high, temp_low, temp_volume)
-                
-                if feature_row is None:
-                    break
-                
-                feature_scaled = self.scaler.transform(feature_row.reshape(1, -1))
-                
-                if model_type == 'ensemble' and self.models:
-                    pred_returns = []
-                    weights = []
-                    for name, model in self.models.items():
-                        pred_return = model.predict(feature_scaled)[0]
-                        # Clip extreme predictions - much tighter bounds
-                        pred_return = np.clip(pred_return, -0.015, 0.015)  # Max 1.5% per day
-                        acc = self.metrics.get(name, {}).get('accuracy', 50)
-                        pred_returns.append(pred_return)
-                        weights.append(max(acc - 45, 1))  # Weight by excess accuracy over random
+                if model_useful:
+                    # Get features for prediction
+                    temp_close = np.append(close, current_price) if step > 0 else close
+                    temp_high = np.append(high, current_price) if step > 0 else high
+                    temp_low = np.append(low, current_price) if step > 0 else low
+                    temp_volume = np.append(volume, volume[-1]) if step > 0 else volume
                     
-                    if sum(weights) > 0:
-                        weighted_return = sum(r * w for r, w in zip(pred_returns, weights)) / sum(weights)
+                    feature_row = self._create_single_feature(temp_close, temp_high, temp_low, temp_volume)
+                    
+                    if feature_row is not None:
+                        feature_scaled = self.scaler.transform(feature_row.reshape(1, -1))
+                        
+                        # Get ensemble prediction
+                        pred_returns = []
+                        for name, model in self.models.items():
+                            try:
+                                pred = model.predict(feature_scaled)[0]
+                                pred_returns.append(np.clip(pred, -0.03, 0.03))
+                            except:
+                                pass
+                        
+                        if pred_returns:
+                            model_return = np.median(pred_returns)  # Use median for robustness
+                        else:
+                            model_return = 0
                     else:
-                        weighted_return = np.mean(pred_returns)
-                elif model_type in self.models:
-                    weighted_return = self.models[model_type].predict(feature_scaled)[0]
-                    weighted_return = np.clip(weighted_return, -0.015, 0.015)
+                        model_return = 0
                 else:
-                    weighted_return = 0.0
+                    # Model not useful, use simple momentum
+                    model_return = avg_return * 0.5  # Weak momentum
                 
-                # Apply mean reversion pressure - STRONGER
-                # If price is far above SMA20, reduce upward predictions
-                price_vs_sma = (current_price - sma20) / sma20
-                mean_reversion_factor = 1.0
+                # Apply realistic adjustments
+                adjusted_return = model_return
                 
-                if price_vs_sma > 0.02 and weighted_return > 0:  # Price 2%+ above SMA, predicting up
-                    mean_reversion_factor = max(0.1, 1 - abs(price_vs_sma) * 5)
-                elif price_vs_sma < -0.02 and weighted_return < 0:  # Price 2%+ below SMA, predicting down
-                    mean_reversion_factor = max(0.1, 1 - abs(price_vs_sma) * 5)
+                # 1. Mean reversion (gentle, only when far from SMA)
+                price_vs_sma20 = (current_price - sma20) / sma20
+                if abs(price_vs_sma20) > 0.05:  # More than 5% from SMA20
+                    reversion = -price_vs_sma20 * 0.1  # Pull 10% of gap
+                    adjusted_return = adjusted_return * 0.7 + reversion * 0.3
                 
-                # Strong mean reversion: pull back toward SMA
-                if abs(price_vs_sma) > 0.03:
-                    # Add mean reversion component
-                    reversion_pull = -price_vs_sma * 0.15  # Pull 15% of the gap per day
-                    weighted_return = weighted_return * 0.5 + reversion_pull * 0.5
+                # 2. RSI adjustment (only at extremes)
+                if current_rsi > 75:  # Very overbought
+                    adjusted_return = min(adjusted_return, 0.005)  # Cap upside
+                elif current_rsi < 25:  # Very oversold
+                    adjusted_return = max(adjusted_return, -0.005)  # Cap downside
                 
-                # Apply RSI-based adjustment (overbought/oversold) - STRONGER
-                rsi_adjustment = 1.0
-                if current_rsi > 65 and weighted_return > 0:  # Overbought, reduce upward
-                    rsi_adjustment = max(0.2, 1 - (current_rsi - 50) / 100)
-                elif current_rsi < 35 and weighted_return < 0:  # Oversold, reduce downward
-                    rsi_adjustment = max(0.2, 1 - (50 - current_rsi) / 100)
+                # 3. Confidence decay for future predictions
+                confidence_factor = 0.9 ** step  # Gentle decay
+                adjusted_return *= confidence_factor
                 
-                # Apply Bollinger adjustment - STRONGER
-                bb_adjustment = 1.0
-                if current_bb > 0.5 and weighted_return > 0:  # Near upper band
-                    bb_adjustment = max(0.3, 1 - current_bb)
-                elif current_bb < -0.5 and weighted_return < 0:  # Near lower band
-                    bb_adjustment = max(0.3, 1 + current_bb)
+                # 4. Add small random walk component (markets are noisy)
+                noise = np.random.normal(0, daily_vol * 0.3)
+                adjusted_return += noise * (0.5 ** step)  # Less noise for further predictions
                 
-                # Final adjusted return
-                adjusted_return = weighted_return * mean_reversion_factor * rsi_adjustment * bb_adjustment
+                # 5. Apply sentiment (first 2 days only)
+                if step < 2 and hasattr(self, '_sentiment_data') and self._sentiment_data:
+                    sent = self._sentiment_data
+                    if sent.get('total', 0) >= 3:
+                        sent_adj = sent.get('score', 0) * 0.003  # Max 0.3% impact
+                        adjusted_return += sent_adj
                 
-                # Add decay for longer predictions (less confident further out)
-                decay = 0.7 ** step  # Stronger decay
-                adjusted_return *= decay
-                
-                # Final clip - max 1% move per day after all adjustments
-                adjusted_return = np.clip(adjusted_return, -0.01, 0.01)
-                
-                # Apply sentiment adjustment (chỉ áp dụng cho step đầu tiên)
-                if step == 0 and hasattr(self, '_sentiment_data') and self._sentiment_data:
-                    sentiment = self._sentiment_data
-                    sentiment_score = sentiment.get('score', 0)
-                    news_count = sentiment.get('total', 0)
-                    
-                    # Chỉ áp dụng nếu có đủ tin (>=3)
-                    if news_count >= 3:
-                        # Sentiment adjustment: tối đa ±0.5% ảnh hưởng
-                        # sentiment_score từ -1 đến 1
-                        sentiment_adjustment = sentiment_score * 0.005  # Max 0.5%
-                        adjusted_return += sentiment_adjustment
-                        adjusted_return = np.clip(adjusted_return, -0.015, 0.015)  # Re-clip
+                # Final realistic bounds
+                adjusted_return = np.clip(adjusted_return, -0.025, 0.025)  # Max 2.5% per day
                 
                 next_price = current_price * (1 + adjusted_return)
                 
-                # HARD LIMIT: Giới hạn tổng mức thay đổi tối đa ±15% so với giá gốc
-                max_total_change = 0.15  # 15%
-                max_price = last_price * (1 + max_total_change)
-                min_price = last_price * (1 - max_total_change)
+                # Absolute bounds (max 10% total change)
+                max_price = last_price * 1.10
+                min_price = last_price * 0.90
                 next_price = np.clip(next_price, min_price, max_price)
                 
                 predictions.append(round(float(next_price), 2))
                 
-                # Calculate prediction range (confidence interval)
-                uncertainty = daily_vol * np.sqrt(step + 1) * current_price * 1.96  # 95% CI
-                pred_low = max(min_price, next_price - uncertainty)
-                pred_high = min(max_price, next_price + uncertainty)
+                # Prediction range (confidence interval)
+                uncertainty = daily_vol * np.sqrt(step + 1) * current_price * 1.5
                 prediction_ranges.append({
-                    'low': round(pred_low, 2),
-                    'high': round(pred_high, 2)
+                    'low': round(max(min_price, next_price - uncertainty), 2),
+                    'high': round(min(max_price, next_price + uncertainty), 2)
                 })
                 
                 current_price = next_price
@@ -483,24 +467,23 @@ class StockMLModel:
                 if current_date.weekday() < 5:
                     dates.append(current_date.strftime('%Y-%m-%d'))
             
-            # Calculate confidence based on model performance
-            avg_accuracy = np.mean([m.get('accuracy', 50) for m in self.metrics.values() if 'accuracy' in m])
-            baseline_acc = self.metrics.get('baseline', {}).get('accuracy', 50)
-            
-            # Confidence = how much better than random
-            confidence = min(0.9, max(0.3, (avg_accuracy - 45) / 50))
-            
             # Determine trend
-            if len(predictions) > 0:
-                total_change = (predictions[-1] - last_price) / last_price
-                if total_change > 0.02:
+            if len(predictions) >= 2:
+                price_change = (predictions[-1] - last_price) / last_price
+                if price_change > 0.015:
                     trend = 'up'
-                elif total_change < -0.02:
+                elif price_change < -0.015:
                     trend = 'down'
                 else:
                     trend = 'sideways'
             else:
                 trend = 'unknown'
+            
+            # Honest confidence score
+            if model_useful:
+                confidence = min(0.7, max(0.4, (avg_accuracy - 50) / 30))
+            else:
+                confidence = 0.35
             
             return {
                 'symbol': self.symbol,
@@ -514,13 +497,20 @@ class StockMLModel:
                 'sma20': round(sma20, 2),
                 'rsi': round(current_rsi, 1),
                 'bollinger_position': round(current_bb, 2),
+                'model_accuracy': round(avg_accuracy, 1),
+                'model_useful': model_useful,
+                'daily_volatility': round(daily_vol * 100, 2),
                 'metrics': {k: v for k, v in self.metrics.items() if k != 'baseline'},
-                'baseline_accuracy': baseline_acc,
-                'sentiment': self._sentiment_data  # Thêm sentiment vào response
+                'sentiment': self._sentiment_data if hasattr(self, '_sentiment_data') else None,
+                'warning': None if model_useful else 'Model accuracy near baseline, predictions less reliable'
             }
+            
         except Exception as e:
             logger.error(f"Prediction error: {e}")
+            import traceback
+            traceback.print_exc()
             return quick_predict(df['close'].tolist(), steps)
+
     
     def _create_single_feature(self, close: np.ndarray, high: np.ndarray, low: np.ndarray, volume: np.ndarray) -> np.ndarray:
         """Create feature row for single prediction"""
@@ -597,85 +587,79 @@ class StockMLModel:
 
 
 def quick_predict(prices: list, steps: int = 7) -> dict:
-    """Quick prediction using technical analysis (fallback) - balanced approach"""
+    """Quick prediction using random walk with drift - realistic approach"""
     if len(prices) < 5:
         return {'predictions': [], 'error': 'Need at least 5 price points'}
     
     prices = np.array(prices, dtype=float)
     last_price = float(prices[-1])
     
-    # Calculate indicators
+    # Calculate historical statistics
     returns = np.diff(prices) / prices[:-1]
-    volatility = np.std(returns[-20:]) if len(returns) >= 20 else np.std(returns)
-    
-    # Trend (with decay for mean reversion)
-    recent = prices[-10:] if len(prices) >= 10 else prices
-    short_trend = (recent[-1] - recent[0]) / (len(recent) * recent[0]) if len(recent) > 1 else 0
+    daily_vol = np.std(returns[-20:]) if len(returns) >= 20 else np.std(returns)
+    avg_return = np.mean(returns[-20:]) if len(returns) >= 20 else np.mean(returns)
     
     # Moving averages
     sma5 = np.mean(prices[-5:])
     sma20 = np.mean(prices[-20:]) if len(prices) >= 20 else np.mean(prices)
     
-    # RSI-like momentum
+    # Simple RSI
     if len(returns) >= 14:
-        gains = returns[-14:][returns[-14:] > 0]
-        losses = -returns[-14:][returns[-14:] < 0]
-        avg_gain = np.mean(gains) if len(gains) > 0 else 0
-        avg_loss = np.mean(losses) if len(losses) > 0 else 0.001
+        gains = np.where(returns[-14:] > 0, returns[-14:], 0)
+        losses = np.where(returns[-14:] < 0, -returns[-14:], 0)
+        avg_gain = np.mean(gains)
+        avg_loss = np.mean(losses) + 1e-10
         rsi = 100 - (100 / (1 + avg_gain / avg_loss))
     else:
         rsi = 50
     
-    # Price position relative to range
-    high_20 = np.max(prices[-20:]) if len(prices) >= 20 else np.max(prices)
-    low_20 = np.min(prices[-20:]) if len(prices) >= 20 else np.min(prices)
-    price_position = (last_price - low_20) / (high_20 - low_20 + 0.001)
-    
     predictions = []
+    prediction_ranges = []
     current_price = last_price
     
-    # HARD LIMIT: Maximum total change ±15%
-    max_total_change = 0.15
-    max_price = last_price * (1 + max_total_change)
-    min_price = last_price * (1 - max_total_change)
+    # Realistic bounds (max 10% total change over prediction period)
+    max_price = last_price * 1.10
+    min_price = last_price * 0.90
     
     for i in range(steps):
-        # Base prediction from trend - much weaker
-        trend_component = short_trend * (0.5 ** i) * 0.3  # Weak trend, strong decay
+        # Random walk with slight mean reversion
+        # Base: small drift based on recent average
+        drift = avg_return * 0.3 * (0.9 ** i)  # Decaying drift
         
-        # Mean reversion component (pull toward SMA20) - this is key
+        # Mean reversion only when far from SMA20
         price_vs_sma = (current_price - sma20) / sma20
-        mean_reversion = -price_vs_sma * 0.1  # Pull 10% of gap toward SMA
+        if abs(price_vs_sma) > 0.05:
+            reversion = -price_vs_sma * 0.05  # Gentle pull
+        else:
+            reversion = 0
         
-        # RSI adjustment - stronger
-        rsi_adj = 0
-        if rsi > 60:  # Overbought - expect pullback
-            rsi_adj = -0.003 * (rsi - 50) / 50
-        elif rsi < 40:  # Oversold - expect bounce
-            rsi_adj = 0.003 * (50 - rsi) / 50
+        # Random component (most important for realism)
+        noise = np.random.normal(0, daily_vol * 0.6)
         
-        # Position adjustment (if near high, less likely to go higher)
-        position_adj = 0
-        if price_position > 0.7:  # Near highs
-            position_adj = -0.002 * (price_position - 0.5)
-        elif price_position < 0.3:  # Near lows
-            position_adj = 0.002 * (0.5 - price_position)
+        # Combine
+        expected_return = drift + reversion + noise
         
-        # Combine all factors
-        expected_return = trend_component + mean_reversion + rsi_adj + position_adj
+        # RSI bounds (only at extremes)
+        if rsi > 70 and expected_return > 0.01:
+            expected_return *= 0.5
+        elif rsi < 30 and expected_return < -0.01:
+            expected_return *= 0.5
         
-        # Add small random noise
-        random_component = np.random.normal(0, volatility * 0.1)
+        # Daily bounds: max 2.5% change
+        expected_return = np.clip(expected_return, -0.025, 0.025)
         
-        # Clip extreme moves - max 1% per day
-        total_return = np.clip(expected_return + random_component, -0.01, 0.01)
-        
-        next_price = current_price * (1 + total_return)
-        
-        # Enforce hard limit ±15% from original price
+        next_price = current_price * (1 + expected_return)
         next_price = np.clip(next_price, min_price, max_price)
         
         predictions.append(round(float(next_price), 2))
+        
+        # Confidence interval
+        uncertainty = daily_vol * np.sqrt(i + 1) * current_price * 1.5
+        prediction_ranges.append({
+            'low': round(max(min_price, next_price - uncertainty), 2),
+            'high': round(min(max_price, next_price + uncertainty), 2)
+        })
+        
         current_price = next_price
     
     # Generate dates (skip weekends)
@@ -688,23 +672,27 @@ def quick_predict(prices: list, steps: int = 7) -> dict:
     
     # Determine trend based on overall prediction
     total_change = (predictions[-1] - last_price) / last_price
-    if total_change > 0.02:
+    if total_change > 0.015:
         trend = 'up'
-    elif total_change < -0.02:
+    elif total_change < -0.015:
         trend = 'down'
     else:
         trend = 'sideways'
     
     return {
-        'predictions': predictions, 
+        'symbol': 'unknown',
+        'predictions': predictions,
+        'prediction_ranges': prediction_ranges,
         'dates': dates, 
-        'model': 'technical', 
-        'confidence': 0.45,  # Lower confidence for simple model
+        'model': 'random_walk', 
+        'confidence': 0.35,
         'trend': trend, 
         'last_price': last_price,
         'rsi': round(rsi, 1),
         'sma20': round(sma20, 2),
-        'note': 'Fallback model - limited accuracy'
+        'daily_volatility': round(daily_vol * 100, 2),
+        'model_useful': False,
+        'warning': 'Fallback random walk model - predictions have high uncertainty'
     }
 
 
