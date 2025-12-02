@@ -81,6 +81,14 @@ try:
 except ImportError as e:
     logger.warning(f"⚠️ ML Models router not loaded: {e}")
 
+# Include Advanced ML Router (FinBERT, LSTM, GRU, Features)
+try:
+    from src.api.advanced_ml_endpoints import router as advanced_ml_router
+    app.include_router(advanced_ml_router)
+    logger.info("✅ Advanced ML router loaded (FinBERT, Deep Learning)")
+except ImportError as e:
+    logger.warning(f"⚠️ Advanced ML router not loaded: {e}")
+
 
 # =====================================================
 # PYDANTIC MODELS
