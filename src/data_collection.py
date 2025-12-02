@@ -319,6 +319,153 @@ class VNDirectAPI:
             'Accept-Language': 'en-US,en;q=0.9,vi;q=0.8',
             'Origin': 'https://dstock.vndirect.com.vn'
         })
+
+
+class SSIAPI:
+    """Kết nối API SSI (Công ty Chứng khoán SSI) - API công khai, miễn phí"""
+    
+    def __init__(self):
+        self.base_url = "https://iboard-api.ssi.com.vn"
+        self.session = requests.Session()
+        self.session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'application/json',
+        })
+    
+    def get_stock_price(self, symbol: str, from_date: str, to_date: str, 
+                       resolution: str = 'D') -> pd.DataFrame:
+        """
+        Lấy dữ liệu giá cổ phiếu từ SSI API
+        
+        Args:
+            symbol: Mã cổ phiếu (vd: 'VNM', 'FPT')
+            from_date: Ngày bắt đầu (YYYY-MM-DD)
+            to_date: Ngày kết thúc (YYYY-MM-DD)
+            resolution: 'D'=daily, '1'=1min, '5'=5min, '15'=15min, '30'=30min, '60'=1hour
+        
+        Returns:
+            DataFrame với cột: date, Open, High, Low, Close, Volume, symbol
+        """
+        try:
+            # Clean symbol
+            clean_symbol = symbol.replace('.VN', '').upper()
+            
+            # Convert dates to Unix timestamp
+            start_dt = pd.to_datetime(from_date)
+            end_dt = pd.to_datetime(to_date)
+            from_timestamp = int(start_dt.timestamp())
+            to_timestamp = int(end_dt.timestamp())
+            
+            # SSI API endpoint
+            url = f"{self.base_url}/stock/bars"
+            params = {
+                'symbol': clean_symbol,
+                'resolution': resolution,
+                'from': from_timestamp,
+                'to': to_timestamp
+            }
+            
+            logger.info(f"Fetching from SSI API: {clean_symbol} ({start_dt.date()} to {end_dt.date()})")
+            
+            response = self.session.get(url, params=params, timeout=15)
+            
+            if response.status_code != 200:
+                logger.error(f"SSI API returned status {response.status_code}")
+                return pd.DataFrame()
+            
+            data = response.json()
+            
+            # Check if data is valid
+            if data.get('s') != 'ok':
+                logger.error(f"SSI API error: {data.get('s', 'unknown')}")
+                return pd.DataFrame()
+            
+            # Parse response (format giống TradingView)
+            # t: timestamps, o: open, h: high, l: low, c: close, v: volume
+            if not all(key in data for key in ['t', 'o', 'h', 'l', 'c', 'v']):
+                logger.error("Missing required fields in SSI response")
+                return pd.DataFrame()
+            
+            # Convert to DataFrame
+            df = pd.DataFrame({
+                'date': pd.to_datetime(data['t'], unit='s'),
+                'Open': data['o'],
+                'High': data['h'],
+                'Low': data['l'],
+                'Close': data['c'],
+                'Volume': data['v']
+            })
+            
+            df['symbol'] = symbol
+            df = df.sort_values('date').reset_index(drop=True)
+            
+            logger.info(f"✅ Successfully fetched {len(df)} records from SSI API for {symbol}")
+            return df
+        
+        except Exception as e:
+            logger.error(f"❌ Error fetching SSI data: {str(e)}")
+            return pd.DataFrame()
+    
+    def get_stock_info(self, symbol: str) -> Dict:
+        """
+        Lấy thông tin realtime của cổ phiếu
+        
+        Args:
+            symbol: Mã cổ phiếu (vd: 'VNM', 'FPT')
+        
+        Returns:
+            Dict chứa thông tin giá realtime
+        """
+        try:
+            clean_symbol = symbol.replace('.VN', '').upper()
+            
+            url = f"{self.base_url}/stock/quote/{clean_symbol}"
+            response = self.session.get(url, timeout=10)
+            
+            if response.status_code == 200:
+                data = response.json()
+                logger.info(f"✅ Successfully fetched stock info for {symbol} from SSI API")
+                return data
+            else:
+                logger.warning(f"No stock info found for {symbol}")
+                return {}
+                
+        except Exception as e:
+            logger.error(f"❌ Error fetching SSI stock info: {str(e)}")
+            return {}
+    
+    def get_intraday_data(self, symbol: str, resolution: str = '1') -> pd.DataFrame:
+        """
+        Lấy dữ liệu trong ngày (intraday)
+        
+        Args:
+            symbol: Mã cổ phiếu
+            resolution: '1'=1min, '5'=5min, '15'=15min, '30'=30min, '60'=1hour
+        
+        Returns:
+            DataFrame với dữ liệu intraday
+        """
+        try:
+            clean_symbol = symbol.replace('.VN', '').upper()
+            
+            # Get today's data
+            end_dt = datetime.now()
+            start_dt = end_dt.replace(hour=0, minute=0, second=0)
+            
+            return self.get_stock_price(
+                clean_symbol, 
+                start_dt.strftime('%Y-%m-%d'),
+                end_dt.strftime('%Y-%m-%d'),
+                resolution=resolution
+            )
+            
+        except Exception as e:
+            logger.error(f"❌ Error fetching SSI intraday data: {str(e)}")
+            return pd.DataFrame()
+
+
+class VNDirectAPI:
+    """Kết nối API VNDirect - DEPRECATED, nên dùng SSIAPI thay thế"""
     
     def get_stock_price(self, symbol: str, from_date: str, to_date: str) -> pd.DataFrame:
         """
