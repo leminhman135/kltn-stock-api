@@ -80,20 +80,27 @@ def get_stock_data(symbol: str, days: int = 365) -> pd.DataFrame:
 @router.post("/sentiment", response_model=SentimentResponse)
 async def analyze_sentiment(request: SentimentRequest):
     """
-    Phân tích sentiment với FinBERT
+    Phân tích sentiment với Hybrid Analyzer
     
-    - Sử dụng ProsusAI/finbert cho tiếng Anh
-    - Fallback keyword-based cho tiếng Việt
-    - Returns: positive, negative, neutral với confidence score
+    Pipeline 7 bước:
+    1. Nhận văn bản từ request
+    2. Làm sạch văn bản (tự động)
+    3. Tokenization (tự động trong analyzer)
+    4. Embedding (tự động trong analyzer)
+    5. Dự đoán sentiment: keyword-based (Việt) hoặc FinBERT (Anh)
+    6. Chuyển về dạng số [-1, 1]
+    7. Trả về kết quả
+    
+    Returns: positive, negative, neutral với confidence score
     """
     import time
     start_time = time.time()
     
     try:
-        from src.sentiment import get_analyzer
+        from src.hybrid_sentiment import HybridSentimentAnalyzer
         
-        analyzer = get_analyzer()
-        results = analyzer.analyze_batch(request.texts)
+        analyzer = HybridSentimentAnalyzer(use_finbert=False)
+        results = analyzer.analyze_batch(request.texts, method='auto')
         
         processing_time = (time.time() - start_time) * 1000
         
@@ -103,13 +110,15 @@ async def analyze_sentiment(request: SentimentRequest):
             processing_time_ms=round(processing_time, 2)
         )
         
-    except ImportError:
-        # Fallback if sentiment module not available
-        results = [{'label': 'neutral', 'score': 0.5, 'sentiment_score': 0.0, 'method': 'unavailable'} 
+    except Exception as e:
+        logger.error(f"Sentiment analysis error: {e}")
+        # Fallback
+        results = [{'sentiment': 'neutral', 'positive': 0.0, 'negative': 0.0, 'neutral': 1.0, 
+                   'sentiment_score': 0.0, 'confidence': 0.0, 'method': 'error', 'explanation': str(e)} 
                    for _ in request.texts]
         return SentimentResponse(
             results=results,
-            method='unavailable',
+            method='error',
             processing_time_ms=0
         )
 
