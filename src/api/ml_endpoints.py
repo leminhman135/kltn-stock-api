@@ -1446,14 +1446,20 @@ async def unified_predict(
         if include_sentiment:
             try:
                 from sqlalchemy import text
-                query = text("""
-                    SELECT sentiment, confidence, analyzed_at 
-                    FROM sentiment_analysis 
-                    WHERE symbol = :symbol 
-                    ORDER BY analyzed_at DESC 
-                    LIMIT 5
-                """)
-                result = db.execute(query, {"symbol": symbol.upper()}).fetchall()
+                # Query from sentiment_analysis table using stock_id
+                # First get stock_id
+                stock = db.query(Stock).filter(Stock.symbol == symbol.upper()).first()
+                if stock:
+                    query = text("""
+                        SELECT sentiment_label, confidence, analyzed_at 
+                        FROM sentiment_analysis 
+                        WHERE stock_id = :stock_id 
+                        ORDER BY date DESC 
+                        LIMIT 5
+                    """)
+                    result = db.execute(query, {"stock_id": stock.id}).fetchall()
+                else:
+                    result = []
                 
                 if result:
                     sentiments = [r[0] for r in result]

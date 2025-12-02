@@ -14,7 +14,7 @@ from sqlalchemy import (
     Text, Boolean, JSON, ForeignKey, Index, UniqueConstraint
 )
 from sqlalchemy.orm import relationship
-from ..database.connection import Base
+from .connection import Base
 
 
 # ========================

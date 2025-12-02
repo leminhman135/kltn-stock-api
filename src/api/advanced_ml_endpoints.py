@@ -1,12 +1,4 @@
-"""
-Advanced ML API Endpoints - FinBERT & Deep Learning
 
-Endpoints:
-1. POST /api/ml/sentiment - Analyze sentiment with FinBERT
-2. POST /api/ml/deep-predict - Predictions with LSTM/GRU
-3. GET /api/ml/features/{symbol} - Get engineered features
-4. POST /api/ml/ensemble-predict - Ensemble predictions
-"""
 
 import os
 import logging

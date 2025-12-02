@@ -285,3 +285,69 @@ class NewsArticle(Base):
     
     def __repr__(self):
         return f"<NewsArticle(symbol='{self.stock_symbol}', title='{self.title[:50]}...')>"
+
+
+class AnalyzedNews(Base):
+    """FinBERT analyzed news articles with sentiment scores."""
+    __tablename__ = "analyzed_news"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    symbol = Column(String(20), index=True)
+    
+    # Article content
+    title = Column(Text, nullable=False)
+    summary = Column(Text)
+    url = Column(Text, unique=True)
+    source = Column(String(100))
+    published_at = Column(DateTime, index=True)
+    
+    # FinBERT sentiment scores
+    sentiment = Column(String(20))  # positive, negative, neutral
+    sentiment_score = Column(Float)  # -1 to 1
+    positive_score = Column(Float)  # probability
+    negative_score = Column(Float)  # probability
+    neutral_score = Column(Float)  # probability
+    
+    # Metadata
+    analyzed_at = Column(DateTime, default=datetime.utcnow)
+    model_version = Column(String(50), default='finbert-v1')
+    
+    # Index for fast queries
+    __table_args__ = (
+        Index('ix_analyzed_news_symbol', 'symbol'),
+        Index('ix_analyzed_news_published', 'published_at'),
+    )
+    
+    def __repr__(self):
+        return f"<AnalyzedNews(symbol='{self.symbol}', sentiment='{self.sentiment}')>"
+
+
+class SentimentSummary(Base):
+    """Daily sentiment summary aggregated from FinBERT analysis."""
+    __tablename__ = "sentiment_summary"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    symbol = Column(String(20), nullable=False, index=True)
+    date = Column(Date, nullable=False, index=True)
+    
+    # Sentiment counts
+    positive_count = Column(Integer, default=0)
+    negative_count = Column(Integer, default=0)
+    neutral_count = Column(Integer, default=0)
+    
+    # Aggregated scores
+    avg_score = Column(Float, default=0)
+    overall_sentiment = Column(String(20))  # positive, negative, neutral
+    news_count = Column(Integer, default=0)
+    
+    # Metadata
+    updated_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Unique constraint
+    __table_args__ = (
+        UniqueConstraint('symbol', 'date', name='uq_sentiment_summary_symbol_date'),
+        Index('ix_sentiment_summary_symbol_date', 'symbol', 'date'),
+    )
+    
+    def __repr__(self):
+        return f"<SentimentSummary(symbol='{self.symbol}', date='{self.date}', sentiment='{self.overall_sentiment}')>"

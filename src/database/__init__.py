@@ -8,6 +8,9 @@ from .models import (
     SentimentAnalysis,
     ModelMetrics,
     Prediction,
+    NewsArticle,
+    AnalyzedNews,
+    SentimentSummary,
     Base
 )
 
@@ -21,5 +24,8 @@ __all__ = [
     'SentimentAnalysis',
     'ModelMetrics',
     'Prediction',
+    'NewsArticle',
+    'AnalyzedNews',
+    'SentimentSummary',
     'Base'
 ]

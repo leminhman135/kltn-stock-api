@@ -1,12 +1,3 @@
-"""
-Industry Data Collection Module
-
-Thu thập dữ liệu thống kê ngành:
-- Thống kê theo ngành và nhóm ngành
-- Cung cầu thị trường
-- So sánh hiệu suất ngành
-- Phân tích sector rotation
-"""
 
 import pandas as pd
 import numpy as np

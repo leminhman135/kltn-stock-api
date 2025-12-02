@@ -20,8 +20,20 @@ import os
 from src.database.connection import get_db, engine
 from src.database.models import (
     Stock, StockPrice, TechnicalIndicator,
-    SentimentAnalysis, ModelMetrics, Prediction, Base
+    SentimentAnalysis, ModelMetrics, Prediction, 
+    NewsArticle, AnalyzedNews, SentimentSummary, Base
 )
+# Import extended models so they get created on startup
+try:
+    from src.database.extended_models import (
+        ForeignTrading, ProprietaryTrading, DetailedTrading,
+        MarketIndex, StockOwnership, IndexComponent,
+        Valuation, FinancialStatement, FinancialRatio,
+        SectorStatistics, MarketBreadth, SupplyDemand
+    )
+    logger.info("✅ Extended database models imported")
+except ImportError as e:
+    logger.warning(f"⚠️ Extended models not available: {e}")
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

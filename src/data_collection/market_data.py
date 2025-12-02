@@ -1,12 +1,4 @@
-"""
-Market Data Collection Module
 
-Thu thập dữ liệu thị trường:
-- Chỉ số thị trường: VN-Index, HNX-Index, VN30-Index, etc.
-- Tỷ lệ Freefloat
-- Tỷ lệ sở hữu nước ngoài
-- Thông tin room nước ngoài
-"""
 
 import pandas as pd
 import numpy as np
