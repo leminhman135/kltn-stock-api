@@ -3711,6 +3711,248 @@ async def get_finbert_status(db: Session = Depends(get_db)):
         }
 
 
+# =====================================================
+# SCHEDULER & INDICATORS ENDPOINTS
+# =====================================================
+
+@app.post("/api/scheduler/start", tags=["Scheduler"])
+async def start_scheduler():
+    """
+    Khởi động background scheduler
+    - Daily update: Mon-Fri at 18:00
+    - Weekly catch-up: Sunday at 10:00
+    """
+    try:
+        from src.scheduler.daily_scheduler import init_scheduler
+        
+        scheduler = init_scheduler()
+        next_run = scheduler.get_next_run_time()
+        
+        return {
+            "status": "success",
+            "message": "Scheduler started successfully",
+            "next_run": next_run,
+            "jobs": [
+                {
+                    "name": "Daily Stock Price & Indicators Update",
+                    "schedule": "Mon-Fri at 18:00"
+                },
+                {
+                    "name": "Weekly Catch-up Update",
+                    "schedule": "Sunday at 10:00"
+                }
+            ]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to start scheduler: {str(e)}")
+
+
+@app.post("/api/scheduler/run-now", tags=["Scheduler"])
+async def trigger_daily_update():
+    """
+    Chạy daily update job ngay lập tức (manual trigger)
+    - Fetch stock prices
+    - Calculate technical indicators
+    """
+    try:
+        from src.scheduler.daily_scheduler import get_scheduler
+        
+        scheduler = get_scheduler()
+        
+        # Run job in background
+        import threading
+        thread = threading.Thread(target=scheduler.run_now)
+        thread.start()
+        
+        return {
+            "status": "success",
+            "message": "Daily update job triggered. Running in background...",
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/scheduler/status", tags=["Scheduler"])
+async def get_scheduler_status():
+    """Lấy trạng thái scheduler"""
+    try:
+        from src.scheduler.daily_scheduler import get_scheduler
+        
+        scheduler = get_scheduler()
+        next_run = scheduler.get_next_run_time()
+        
+        return {
+            "status": "running",
+            "next_run": next_run,
+            "jobs": [
+                {
+                    "id": "daily_price_update",
+                    "name": "Daily Stock Price & Indicators Update",
+                    "schedule": "Mon-Fri at 18:00"
+                },
+                {
+                    "id": "weekly_catchup",
+                    "name": "Weekly Catch-up Update",
+                    "schedule": "Sunday at 10:00"
+                }
+            ]
+        }
+    except Exception as e:
+        return {
+            "status": "stopped",
+            "message": "Scheduler not started yet. Use POST /api/scheduler/start to start.",
+            "error": str(e)
+        }
+
+
+@app.post("/api/indicators/calculate", tags=["Indicators"])
+async def calculate_indicators_for_all(
+    days: int = Query(default=365, description="Số ngày dữ liệu để tính"),
+    db: Session = Depends(get_db)
+):
+    """
+    Tính toán technical indicators cho tất cả stocks
+    
+    Indicators:
+    - Moving Averages: SMA20, SMA50, SMA200, EMA12, EMA26
+    - RSI (14)
+    - MACD (12,26,9)
+    - Bollinger Bands (20,2)
+    - Stochastic Oscillator
+    - ATR (14)
+    - OBV
+    - ADX
+    - CCI
+    - Williams %R
+    """
+    try:
+        from src.features.indicators_processor import IndicatorsProcessor
+        
+        processor = IndicatorsProcessor(db)
+        result = processor.process_all_stocks(days=days)
+        
+        return {
+            "status": "success",
+            "message": "Indicators calculated successfully",
+            "result": result,
+            "indicators": [
+                "SMA (20, 50, 200)",
+                "EMA (12, 26)",
+                "RSI (14)",
+                "MACD (12, 26, 9)",
+                "Bollinger Bands (20, 2)",
+                "Stochastic Oscillator",
+                "ATR (14)",
+                "OBV",
+                "ADX",
+                "CCI",
+                "Williams %R"
+            ]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/indicators/calculate/{symbol}", tags=["Indicators"])
+async def calculate_indicators_for_symbol(
+    symbol: str,
+    days: int = Query(default=365, description="Số ngày dữ liệu"),
+    db: Session = Depends(get_db)
+):
+    """Tính toán technical indicators cho một symbol cụ thể"""
+    try:
+        from src.features.indicators_processor import IndicatorsProcessor
+        
+        # Find stock
+        stock = db.query(Stock).filter(Stock.symbol == symbol.upper()).first()
+        if not stock:
+            raise HTTPException(status_code=404, detail=f"Stock {symbol} not found")
+        
+        processor = IndicatorsProcessor(db)
+        success = processor.process_stock(stock.id, days=days)
+        
+        if success:
+            return {
+                "status": "success",
+                "symbol": symbol.upper(),
+                "message": f"Indicators calculated for {symbol}"
+            }
+        else:
+            return {
+                "status": "failed",
+                "symbol": symbol.upper(),
+                "message": f"Failed to calculate indicators for {symbol}"
+            }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/indicators/{symbol}", tags=["Indicators"])
+async def get_indicators_for_symbol(
+    symbol: str,
+    limit: int = Query(default=30, description="Số ngày gần nhất"),
+    db: Session = Depends(get_db)
+):
+    """Lấy technical indicators đã tính cho một symbol"""
+    try:
+        # Find stock
+        stock = db.query(Stock).filter(Stock.symbol == symbol.upper()).first()
+        if not stock:
+            raise HTTPException(status_code=404, detail=f"Stock {symbol} not found")
+        
+        # Get indicators
+        indicators = db.query(TechnicalIndicator).filter(
+            TechnicalIndicator.stock_id == stock.id
+        ).order_by(desc(TechnicalIndicator.date)).limit(limit).all()
+        
+        if not indicators:
+            return {
+                "symbol": symbol.upper(),
+                "indicators": [],
+                "message": "No indicators found. Use POST /api/indicators/calculate to calculate."
+            }
+        
+        data = []
+        for ind in indicators:
+            data.append({
+                "date": ind.date.isoformat(),
+                "sma_20": ind.sma_20,
+                "sma_50": ind.sma_50,
+                "sma_200": ind.sma_200,
+                "ema_12": ind.ema_12,
+                "ema_26": ind.ema_26,
+                "rsi_14": ind.rsi_14,
+                "macd": ind.macd,
+                "macd_signal": ind.macd_signal,
+                "macd_histogram": ind.macd_histogram,
+                "bb_upper": ind.bb_upper,
+                "bb_middle": ind.bb_middle,
+                "bb_lower": ind.bb_lower,
+                "stoch_k": ind.stoch_k,
+                "stoch_d": ind.stoch_d,
+                "atr_14": ind.atr_14,
+                "obv": ind.obv,
+                "adx": ind.adx,
+                "plus_di": ind.plus_di,
+                "minus_di": ind.minus_di,
+                "cci": ind.cci,
+                "williams_r": ind.williams_r
+            })
+        
+        return {
+            "symbol": symbol.upper(),
+            "records": len(data),
+            "indicators": data
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 if __name__ == "__main__":
     import uvicorn
     
