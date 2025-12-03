@@ -59,10 +59,27 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"⚠️ Database initialization warning (non-fatal): {e}")
     
+    # Initialize scheduler
+    try:
+        from src.scheduler.daily_scheduler import init_scheduler
+        scheduler = init_scheduler()
+        logger.info("✅ Background scheduler started successfully!")
+        logger.info(f"   → Next run: {scheduler.get_next_run_time()}")
+    except Exception as e:
+        logger.warning(f"⚠️ Scheduler initialization warning: {e}")
+    
     yield
     
     # Shutdown
     logger.info("👋 Shutting down KLTN Stock Prediction API...")
+    try:
+        from src.scheduler.daily_scheduler import get_scheduler
+        scheduler = get_scheduler()
+        if scheduler:
+            scheduler.stop()
+            logger.info("✅ Scheduler stopped")
+    except:
+        pass
 
 # Initialize FastAPI app
 app = FastAPI(
