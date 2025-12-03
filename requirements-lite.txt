@@ -1,0 +1,18 @@
+# API Core - Minimal requirements for fast startup
+fastapi==0.117.1
+uvicorn[standard]==0.38.0
+pydantic==2.12.5
+
+# Database
+sqlalchemy==2.0.44
+psycopg2-binary==2.9.11
+
+# Data (minimal)
+pandas==2.3.3
+numpy==2.3.5
+
+# HTTP
+requests==2.32.5
+
+# Utilities
+python-dotenv==1.2.1
