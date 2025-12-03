@@ -293,18 +293,25 @@ class LSTMModel:
         if self.model is None:
             raise ValueError("Model chưa được train")
         
-        # Prepare data
-        X, _ = self.data_preparator.prepare_test_data(data, target_col)
-        
-        # Predict
-        predictions_scaled = self.model.predict(X, verbose=0)
-        
-        # Inverse transform
-        predictions = self.data_preparator.inverse_transform_predictions(
-            predictions_scaled
-        )
-        
-        return predictions
+        try:
+            # Prepare data
+            X, _ = self.data_preparator.prepare_test_data(data, target_col)
+            
+            if len(X) == 0:
+                raise ValueError("Not enough data for prediction")
+            
+            # Predict with batch processing to avoid TensorFlow errors
+            predictions_scaled = self.model.predict(X, verbose=0, batch_size=32)
+            
+            # Inverse transform
+            predictions = self.data_preparator.inverse_transform_predictions(
+                predictions_scaled
+            )
+            
+            return predictions
+        except Exception as e:
+            logger.error(f"LSTM prediction error: {str(e)}")
+            raise
     
     def evaluate(self, test_data: pd.DataFrame, 
                 target_col: str = 'close') -> Dict[str, float]:
@@ -477,11 +484,19 @@ class GRUModel:
         if self.model is None:
             raise ValueError("Model chưa được train")
         
-        X, _ = self.data_preparator.prepare_test_data(data, target_col)
-        predictions_scaled = self.model.predict(X, verbose=0)
-        predictions = self.data_preparator.inverse_transform_predictions(predictions_scaled)
-        
-        return predictions
+        try:
+            X, _ = self.data_preparator.prepare_test_data(data, target_col)
+            
+            if len(X) == 0:
+                raise ValueError("Not enough data for prediction")
+            
+            predictions_scaled = self.model.predict(X, verbose=0, batch_size=32)
+            predictions = self.data_preparator.inverse_transform_predictions(predictions_scaled)
+            
+            return predictions
+        except Exception as e:
+            logger.error(f"GRU prediction error: {str(e)}")
+            raise
     
     def evaluate(self, test_data: pd.DataFrame, 
                 target_col: str = 'close') -> Dict[str, float]:

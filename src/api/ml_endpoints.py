@@ -1291,13 +1291,24 @@ async def unified_predict(
                 
                 # Predict
                 lstm_preds = []
-                for _ in range(days):
+                try:
                     pred = lstm.predict(feature_df, target_col='close')
                     if len(pred) > 0:
-                        lstm_preds.append(float(pred[-1]))
+                        # Use last prediction value for all forecast days
+                        last_pred = float(pred[-1])
+                        lstm_preds = [last_pred] * days
+                except Exception as pred_err:
+                    logger.warning(f"LSTM prediction failed: {pred_err}")
+                    lstm_preds = []
                 
-                predictions['lstm'] = lstm_preds
-                metrics['lstm'] = lstm.evaluate(feature_df[-test_size:], target_col='close')
+                if len(lstm_preds) > 0:
+                    predictions['lstm'] = lstm_preds
+                    try:
+                        metrics['lstm'] = lstm.evaluate(feature_df[-test_size:], target_col='close')
+                    except:
+                        metrics['lstm'] = {"error": "Evaluation failed"}
+                else:
+                    raise ValueError("No predictions generated")
                 model_details['lstm'] = {
                     "name": "LSTM",
                     "type": "Deep Learning",
@@ -1334,13 +1345,24 @@ async def unified_predict(
                 
                 # Predict
                 gru_preds = []
-                for _ in range(days):
+                try:
                     pred = gru.predict(feature_df, target_col='close')
                     if len(pred) > 0:
-                        gru_preds.append(float(pred[-1]))
+                        # Use last prediction value for all forecast days
+                        last_pred = float(pred[-1])
+                        gru_preds = [last_pred] * days
+                except Exception as pred_err:
+                    logger.warning(f"GRU prediction failed: {pred_err}")
+                    gru_preds = []
                 
-                predictions['gru'] = gru_preds
-                metrics['gru'] = gru.evaluate(feature_df[-test_size:], target_col='close')
+                if len(gru_preds) > 0:
+                    predictions['gru'] = gru_preds
+                    try:
+                        metrics['gru'] = gru.evaluate(feature_df[-test_size:], target_col='close')
+                    except:
+                        metrics['gru'] = {"error": "Evaluation failed"}
+                else:
+                    raise ValueError("No predictions generated")
                 model_details['gru'] = {
                     "name": "GRU",
                     "type": "Deep Learning",
