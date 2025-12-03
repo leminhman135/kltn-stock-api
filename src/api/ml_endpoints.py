@@ -1282,6 +1282,11 @@ async def unified_predict(
                 feature_df['rsi'] = calculate_rsi(feature_df['close'])
                 feature_df = feature_df.dropna()
                 
+                # Validate data size (need at least lookback + test_size)
+                min_required = 60 + test_size + 10  # lookback + test + buffer
+                if len(feature_df) < min_required:
+                    raise ValueError(f"Not enough data: {len(feature_df)} rows, need {min_required}")
+                
                 if os.path.exists(model_path):
                     lstm.load_model(model_path)
                     pretrained = True
@@ -1335,6 +1340,11 @@ async def unified_predict(
                 feature_df['sma_30'] = feature_df['close'].rolling(30).mean()
                 feature_df['rsi'] = calculate_rsi(feature_df['close'])
                 feature_df = feature_df.dropna()
+                
+                # Validate data size
+                min_required = 60 + test_size + 10
+                if len(feature_df) < min_required:
+                    raise ValueError(f"Not enough data: {len(feature_df)} rows, need {min_required}")
                 
                 if os.path.exists(model_path):
                     gru.load_model(model_path)
@@ -1440,6 +1450,12 @@ async def unified_predict(
             )
         
         # Calculate weighted ensemble prediction
+        if len(predictions) == 0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"All models failed. Errors: {', '.join([f'{k}: {v.get(\"error\", \"unknown\")}' for k, v in model_details.items() if 'error' in v])}"
+            )
+        
         weights = {}
         total_inv_mae = 0
         for name, m in metrics.items():
@@ -1588,10 +1604,10 @@ async def unified_predict(
                     "predictions": [round(float(p), 2) for p in preds[:days]],
                     "weight_in_ensemble": round(weights.get(name, 0), 4),
                     "metrics": {
-                        "mae": round(metrics[name]['mae'], 2) if name in metrics else None,
-                        "rmse": round(metrics[name]['rmse'], 2) if name in metrics else None,
-                        "mape": round(metrics[name]['mape'], 2) if name in metrics else None
-                    } if name in metrics else None
+                        "mae": round(metrics[name]['mae'], 2),
+                        "rmse": round(metrics[name]['rmse'], 2),
+                        "mape": round(metrics[name]['mape'], 2)
+                    } if name in metrics and 'mae' in metrics[name] else None
                 }
                 for name, preds in predictions.items()
             },
