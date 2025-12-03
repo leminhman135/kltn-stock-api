@@ -1451,9 +1451,10 @@ async def unified_predict(
         
         # Calculate weighted ensemble prediction
         if len(predictions) == 0:
+            error_msgs = [f"{k}: {v.get('error', 'unknown')}" for k, v in model_details.items() if 'error' in v]
             raise HTTPException(
                 status_code=400,
-                detail=f"All models failed. Errors: {', '.join([f'{k}: {v.get(\"error\", \"unknown\")}' for k, v in model_details.items() if 'error' in v])}"
+                detail=f"All models failed. Errors: {', '.join(error_msgs)}"
             )
         
         weights = {}
