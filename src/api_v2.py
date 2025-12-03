@@ -1499,8 +1499,8 @@ from src.news_service import news_service
 from src.news_relevance import relevance_model
 
 @app.get("/api/news", tags=["News"])
-async def get_market_news(limit: int = 100):
-    """Lấy tin tức thị trường chung với phân tích sentiment"""
+async def get_market_news(limit: int = 50):
+    """Lấy tin tức thị trường chung với phân tích sentiment (optimized for 3 days)"""
     try:
         news = news_service.get_all_news(symbol=None, limit=limit)
         return {
@@ -1525,7 +1525,7 @@ async def get_market_news(limit: int = 100):
 
 
 @app.get("/api/news/{symbol}", tags=["News"])
-async def get_stock_news(symbol: str, limit: int = 100):
+async def get_stock_news(symbol: str, limit: int = 50):
     """Lấy tin tức cho một mã cổ phiếu cụ thể với phân tích sentiment và relevance"""
     try:
         news = news_service.get_all_news(symbol=symbol.upper(), limit=limit)

@@ -675,7 +675,7 @@
                 <div class="tab-content" id="page-news">
                     <div class="card">
                         <div class="card-header">
-                            <div class="card-title"><i class="fas fa-newspaper"></i> Tin tức thị trường (7 ngày gần nhất)</div>
+                            <div class="card-title"><i class="fas fa-newspaper"></i> Tin tức thị trường (3 ngày gần nhất)</div>
                             <div style="display:flex;gap:12px;align-items:center;">
                                 <select id="newsSymbolFilter" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg-primary);color:var(--text-primary);font-size:0.875rem;min-width:150px;" onchange="loadNewsData()">
                                     <option value="">Tất cả mã</option>
@@ -1495,18 +1495,18 @@
             tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin" style="font-size:2rem;color:var(--accent);"></i><p style="margin-top:16px;color:var(--text-secondary);">Đang tải tin tức...</p></td></tr>';
             
             try {
-                // Fetch news from API (limit 100 to get 7 days)
-                const response = await fetch(`${API}/api/news?limit=200`);
+                // Fetch news from API (limit 50 for 3 days - faster)
+                const response = await fetch(`${API}/api/news?limit=50`);
                 const data = await response.json();
                 
                 if (data.status === 'success' && data.news) {
-                    // Filter last 7 days
-                    const sevenDaysAgo = new Date();
-                    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+                    // Filter last 3 days
+                    const threeDaysAgo = new Date();
+                    threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
                     
                     allNewsData = data.news.filter(news => {
                         const newsDate = parseNewsDate(news.published_at);
-                        return newsDate >= sevenDaysAgo;
+                        return newsDate >= threeDaysAgo;
                     });
                     
                     // Populate symbol filter
