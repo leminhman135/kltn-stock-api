@@ -1273,17 +1273,17 @@ async def unified_predict(
                 from src.models.lstm_gru_models import LSTMModel
                 model_path = f"models/lstm_{symbol.upper()}.h5"
                 
-                lstm = LSTMModel(lookback=60, forecast_horizon=1, units=[50, 50])
+                lstm = LSTMModel(lookback=30, forecast_horizon=1, units=[50, 50])
                 
                 # Prepare features
                 feature_df = df[['close', 'volume', 'high', 'low']].copy()
                 feature_df['sma_10'] = feature_df['close'].rolling(10).mean()
-                feature_df['sma_30'] = feature_df['close'].rolling(30).mean()
+                feature_df['sma_20'] = feature_df['close'].rolling(20).mean()  # Reduced from 30
                 feature_df['rsi'] = calculate_rsi(feature_df['close'])
                 feature_df = feature_df.dropna()
                 
                 # Validate data size (need at least lookback + test_size)
-                min_required = 60 + test_size + 10  # lookback + test + buffer
+                min_required = 30 + test_size + 5  # Reduced requirements
                 if len(feature_df) < min_required:
                     raise ValueError(f"Not enough data: {len(feature_df)} rows, need {min_required}")
                 
@@ -1332,17 +1332,17 @@ async def unified_predict(
                 from src.models.lstm_gru_models import GRUModel
                 model_path = f"models/gru_{symbol.upper()}.h5"
                 
-                gru = GRUModel(lookback=60, forecast_horizon=1, units=[50, 50])
+                gru = GRUModel(lookback=30, forecast_horizon=1, units=[50, 50])
                 
                 # Prepare features
                 feature_df = df[['close', 'volume', 'high', 'low']].copy()
                 feature_df['sma_10'] = feature_df['close'].rolling(10).mean()
-                feature_df['sma_30'] = feature_df['close'].rolling(30).mean()
+                feature_df['sma_20'] = feature_df['close'].rolling(20).mean()  # Reduced from 30
                 feature_df['rsi'] = calculate_rsi(feature_df['close'])
                 feature_df = feature_df.dropna()
                 
                 # Validate data size
-                min_required = 60 + test_size + 10
+                min_required = 30 + test_size + 5
                 if len(feature_df) < min_required:
                     raise ValueError(f"Not enough data: {len(feature_df)} rows, need {min_required}")
                 
