@@ -282,6 +282,7 @@
                     <div class="nav-section-title">Tổng quan</div>
                     <div class="nav-item active" data-page="dashboard"><i class="fas fa-th-large"></i> Dashboard</div>
                     <div class="nav-item" data-page="market"><i class="fas fa-table"></i> Bảng giá</div>
+                    <div class="nav-item" data-page="news"><i class="fas fa-newspaper"></i> Tin tức</div>
                 </div>
                 <div class="nav-section">
                     <div class="nav-section-title">Phân tích</div>
@@ -669,6 +670,60 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- News Page -->
+                <div class="tab-content" id="page-news">
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title"><i class="fas fa-newspaper"></i> Tin tức thị trường (7 ngày gần nhất)</div>
+                            <div style="display:flex;gap:12px;align-items:center;">
+                                <select id="newsSymbolFilter" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg-primary);color:var(--text-primary);font-size:0.875rem;min-width:150px;" onchange="loadNewsData()">
+                                    <option value="">Tất cả mã</option>
+                                </select>
+                                <select id="newsSentimentFilter" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg-primary);color:var(--text-primary);font-size:0.875rem;" onchange="loadNewsData()">
+                                    <option value="">Tất cả sentiment</option>
+                                    <option value="positive">Tích cực</option>
+                                    <option value="neutral">Trung lập</option>
+                                    <option value="negative">Tiêu cực</option>
+                                </select>
+                                <button class="btn btn-primary" onclick="loadNewsData()"><i class="fas fa-sync"></i> Tải lại</button>
+                            </div>
+                        </div>
+                        <div class="card-body" style="padding:0;">
+                            <div id="newsTableContainer" style="overflow-x:auto;max-height:calc(100vh - 250px);">
+                                <table class="market-table" id="newsTable" style="font-size:0.85rem;">
+                                    <thead style="position:sticky;top:0;z-index:10;background:var(--bg-secondary);">
+                                        <tr>
+                                            <th style="width:60px;">#</th>
+                                            <th style="min-width:400px;">Tiêu đề</th>
+                                            <th style="width:100px;">Mã CK</th>
+                                            <th style="width:120px;">Nguồn</th>
+                                            <th style="width:130px;">Thời gian</th>
+                                            <th style="width:100px;">Sentiment</th>
+                                            <th style="width:80px;">Score</th>
+                                            <th style="width:100px;">Liên quan</th>
+                                            <th style="width:80px;">Link</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="newsTableBody">
+                                        <tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text-secondary);">
+                                            <i class="fas fa-spinner fa-spin" style="font-size:2rem;color:var(--accent);"></i>
+                                            <p style="margin-top:16px;">Đang tải tin tức...</p>
+                                        </td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="card-footer" style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-top:1px solid var(--border);">
+                            <div style="color:var(--text-secondary);font-size:0.875rem;">
+                                <span id="newsCount">0</span> tin tức
+                            </div>
+                            <div style="display:flex;gap:8px;">
+                                <button class="btn btn-sm" onclick="exportNewsCSV()"><i class="fas fa-download"></i> Export CSV</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </main>
     </div>
@@ -706,9 +761,10 @@
                     item.classList.add('active');
                     const page = item.dataset.page;
                     document.getElementById('page-' + page).classList.add('active');
-                    const titles = {dashboard:'Dashboard',market:'Bảng giá thị trường',models:'Mô hình Machine Learning',predict:'Dự đoán giá cổ phiếu'};
+                    const titles = {dashboard:'Dashboard',market:'Bảng giá thị trường',news:'Tin tức thị trường',models:'Mô hình Machine Learning',predict:'Dự đoán giá cổ phiếu'};
                     document.getElementById('pageTitle').textContent = titles[page] || 'Dashboard';
                     if (page === 'market') loadMarketTable();
+                    if (page === 'news') loadNewsData();
                     // Close mobile sidebar after navigation
                     document.getElementById('sidebar').classList.remove('show');
                 });
@@ -1427,6 +1483,173 @@
         function fmtVol(v) { return v == null ? '--' : v >= 1e6 ? (v/1e6).toFixed(1)+'M' : v >= 1e3 ? (v/1e3).toFixed(0)+'K' : v; }
         function formatNum(n) { return n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? (n/1e3).toFixed(1)+'K' : n; }
         function toast(msg, type='success') { const t = document.getElementById('toast'); t.textContent = msg; t.className = 'toast' + (type==='error'?' error':''); t.style.display = 'block'; setTimeout(() => t.style.display = 'none', 3000); }
+
+        // =====================================================
+        // NEWS PAGE FUNCTIONS
+        // =====================================================
+        
+        let allNewsData = [];
+        
+        async function loadNewsData() {
+            const tbody = document.getElementById('newsTableBody');
+            tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin" style="font-size:2rem;color:var(--accent);"></i><p style="margin-top:16px;color:var(--text-secondary);">Đang tải tin tức...</p></td></tr>';
+            
+            try {
+                // Fetch news from API (limit 100 to get 7 days)
+                const response = await fetch(`${API}/api/news?limit=200`);
+                const data = await response.json();
+                
+                if (data.status === 'success' && data.news) {
+                    // Filter last 7 days
+                    const sevenDaysAgo = new Date();
+                    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+                    
+                    allNewsData = data.news.filter(news => {
+                        const newsDate = parseNewsDate(news.published_at);
+                        return newsDate >= sevenDaysAgo;
+                    });
+                    
+                    // Populate symbol filter
+                    populateNewsSymbolFilter();
+                    
+                    // Render table
+                    renderNewsTable();
+                } else {
+                    throw new Error(data.detail || 'Không thể tải tin tức');
+                }
+            } catch (e) {
+                tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--danger);"><i class="fas fa-exclamation-circle" style="font-size:2rem;"></i><p style="margin-top:16px;">Lỗi: ${e.message}</p></td></tr>`;
+                toast('Lỗi tải tin tức', 'error');
+            }
+        }
+        
+        function parseNewsDate(dateStr) {
+            // Parse "DD/MM/YYYY HH:MM" or "YYYY-MM-DD" format
+            if (dateStr.includes('/')) {
+                const [datePart, timePart] = dateStr.split(' ');
+                const [day, month, year] = datePart.split('/');
+                return new Date(year, month - 1, day);
+            } else {
+                return new Date(dateStr);
+            }
+        }
+        
+        function populateNewsSymbolFilter() {
+            const select = document.getElementById('newsSymbolFilter');
+            const symbols = [...new Set(allNewsData.map(n => n.symbol).filter(s => s))].sort();
+            
+            // Keep "Tất cả mã" option and add symbols
+            const currentValue = select.value;
+            select.innerHTML = '<option value="">Tất cả mã</option>' + 
+                symbols.map(s => `<option value="${s}">${s}</option>`).join('');
+            select.value = currentValue;
+        }
+        
+        function renderNewsTable() {
+            const tbody = document.getElementById('newsTableBody');
+            const symbolFilter = document.getElementById('newsSymbolFilter').value;
+            const sentimentFilter = document.getElementById('newsSentimentFilter').value;
+            
+            // Apply filters
+            let filteredNews = allNewsData;
+            
+            if (symbolFilter) {
+                filteredNews = filteredNews.filter(n => n.symbol === symbolFilter);
+            }
+            
+            if (sentimentFilter) {
+                filteredNews = filteredNews.filter(n => n.sentiment === sentimentFilter);
+            }
+            
+            // Update count
+            document.getElementById('newsCount').textContent = filteredNews.length;
+            
+            if (filteredNews.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text-secondary);"><i class="fas fa-inbox" style="font-size:2rem;opacity:0.3;"></i><p style="margin-top:16px;">Không có tin tức</p></td></tr>';
+                return;
+            }
+            
+            // Render rows
+            tbody.innerHTML = filteredNews.map((news, index) => {
+                const sentimentColors = {
+                    positive: {bg: 'var(--success-light)', text: 'var(--success)', icon: '📈'},
+                    negative: {bg: 'var(--danger-light)', text: 'var(--danger)', icon: '📉'},
+                    neutral: {bg: 'rgba(148,163,184,0.15)', text: 'var(--text-secondary)', icon: '➡️'}
+                };
+                const sc = sentimentColors[news.sentiment] || sentimentColors.neutral;
+                
+                const relevancePercent = news.relevance_score !== undefined ? 
+                    (news.relevance_score * 100).toFixed(0) : '--';
+                
+                return `
+                    <tr style="border-bottom:1px solid var(--border);">
+                        <td style="text-align:center;color:var(--text-muted);font-size:0.8rem;">${index + 1}</td>
+                        <td>
+                            <div style="font-weight:500;margin-bottom:4px;">${news.title}</div>
+                            ${news.summary ? `<div style="font-size:0.75rem;color:var(--text-secondary);line-height:1.4;">${news.summary.substring(0, 100)}${news.summary.length > 100 ? '...' : ''}</div>` : ''}
+                        </td>
+                        <td style="text-align:center;">
+                            ${news.symbol ? `<span style="padding:4px 8px;background:var(--accent-light);color:var(--accent);border-radius:6px;font-weight:600;font-size:0.8rem;">${news.symbol}</span>` : '--'}
+                        </td>
+                        <td style="font-size:0.8rem;">${news.source}</td>
+                        <td style="font-size:0.8rem;color:var(--text-secondary);">${news.published_at}</td>
+                        <td>
+                            <span style="padding:4px 10px;background:${sc.bg};color:${sc.text};border-radius:6px;font-size:0.75rem;font-weight:600;display:inline-flex;align-items:center;gap:4px;">
+                                ${sc.icon} ${news.sentiment}
+                            </span>
+                        </td>
+                        <td style="text-align:center;font-weight:600;color:${news.sentiment_score > 0 ? 'var(--success)' : news.sentiment_score < 0 ? 'var(--danger)' : 'var(--text-secondary)'};">
+                            ${news.sentiment_score > 0 ? '+' : ''}${news.sentiment_score.toFixed(2)}
+                        </td>
+                        <td style="text-align:center;">
+                            ${relevancePercent !== '--' ? `<span style="font-weight:600;color:var(--purple);">${relevancePercent}%</span>` : '--'}
+                        </td>
+                        <td style="text-align:center;">
+                            ${news.url ? `<a href="${news.url}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;"><i class="fas fa-external-link-alt"></i></a>` : '--'}
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+        
+        function exportNewsCSV() {
+            const symbolFilter = document.getElementById('newsSymbolFilter').value;
+            const sentimentFilter = document.getElementById('newsSentimentFilter').value;
+            
+            let filteredNews = allNewsData;
+            if (symbolFilter) filteredNews = filteredNews.filter(n => n.symbol === symbolFilter);
+            if (sentimentFilter) filteredNews = filteredNews.filter(n => n.sentiment === sentimentFilter);
+            
+            if (filteredNews.length === 0) {
+                toast('Không có dữ liệu để export', 'error');
+                return;
+            }
+            
+            // Create CSV
+            const headers = ['STT', 'Tiêu đề', 'Mã CK', 'Nguồn', 'Thời gian', 'Sentiment', 'Score', 'Liên quan %', 'URL'];
+            const rows = filteredNews.map((n, i) => [
+                i + 1,
+                `"${n.title.replace(/"/g, '""')}"`,
+                n.symbol || '',
+                n.source,
+                n.published_at,
+                n.sentiment,
+                n.sentiment_score,
+                n.relevance_score !== undefined ? (n.relevance_score * 100).toFixed(0) : '',
+                n.url || ''
+            ]);
+            
+            const csv = [headers, ...rows].map(row => row.join(',')).join('\\n');
+            
+            // Download
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `news_${new Date().toISOString().split('T')[0]}.csv`;
+            link.click();
+            
+            toast('✓ Đã export CSV');
+        }
     </script>
 </body>
 </html>
