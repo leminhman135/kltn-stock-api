@@ -3,12 +3,22 @@ Scheduler - Tự động cập nhật dữ liệu giá và tính indicators hàn
 Chạy vào 18:00 mỗi ngày (sau khi thị trường đóng cửa)
 """
 
-from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.triggers.cron import CronTrigger
+import logging
+
+# Try to import apscheduler (optional dependency)
+try:
+    from apscheduler.schedulers.background import BackgroundScheduler
+    from apscheduler.triggers.cron import CronTrigger
+    SCHEDULER_AVAILABLE = True
+except ImportError:
+    logging.warning("⚠️ apscheduler not installed. Scheduler features disabled.")
+    BackgroundScheduler = None
+    CronTrigger = None
+    SCHEDULER_AVAILABLE = False
+
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
-import logging
 
 from src.database.connection import get_db
 from src.database.models import Stock, StockPrice
@@ -24,6 +34,8 @@ class DailyDataScheduler:
     """Scheduler để tự động cập nhật dữ liệu hàng ngày"""
     
     def __init__(self):
+        if not SCHEDULER_AVAILABLE:
+            raise ImportError("apscheduler is not installed. Install with: pip install apscheduler")
         self.scheduler = BackgroundScheduler()
         self.vndirect = VNDirectAPI()
         
@@ -228,6 +240,9 @@ scheduler_instance = None
 def init_scheduler():
     """Khởi tạo và start scheduler"""
     global scheduler_instance
+    if not SCHEDULER_AVAILABLE:
+        logger.warning("⚠️ Scheduler not available (apscheduler not installed)")
+        return None
     if scheduler_instance is None:
         scheduler_instance = DailyDataScheduler()
         scheduler_instance.start()

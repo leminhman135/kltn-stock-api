@@ -52,34 +52,51 @@ async def lifespan(app: FastAPI):
     """Application lifespan - runs on startup and shutdown"""
     # Startup
     logger.info("🚀 Starting KLTN Stock Prediction API...")
+    
+    # Database initialization
     try:
         # Create all tables (checkfirst=True to skip existing tables/indexes)
         Base.metadata.create_all(bind=engine, checkfirst=True)
         logger.info("✅ Database tables created/verified successfully!")
     except Exception as e:
-        logger.warning(f"⚠️ Database initialization warning (non-fatal): {e}")
+        logger.error(f"❌ Database initialization failed: {e}")
+        # Continue anyway - maybe DB is already set up
     
-    # Initialize scheduler
+    # Initialize scheduler (optional, non-blocking)
     try:
-        from src.scheduler.daily_scheduler import init_scheduler
-        scheduler = init_scheduler()
-        logger.info("✅ Background scheduler started successfully!")
-        logger.info(f"   → Next run: {scheduler.get_next_run_time()}")
+        import importlib
+        # Check if scheduler module exists
+        scheduler_module = importlib.import_module('src.scheduler.daily_scheduler')
+        init_scheduler = getattr(scheduler_module, 'init_scheduler', None)
+        
+        if init_scheduler:
+            scheduler = init_scheduler()
+            logger.info("✅ Background scheduler started successfully!")
+            logger.info(f"   → Next run: {scheduler.get_next_run_time()}")
+        else:
+            logger.warning("⚠️ Scheduler init function not found")
+    except ImportError as e:
+        logger.warning(f"⚠️ Scheduler module not available: {e}")
     except Exception as e:
-        logger.warning(f"⚠️ Scheduler initialization warning: {e}")
+        logger.warning(f"⚠️ Scheduler initialization failed (non-fatal): {e}")
+        logger.info("   → API will continue without automatic scheduling")
     
     yield
     
     # Shutdown
     logger.info("👋 Shutting down KLTN Stock Prediction API...")
     try:
-        from src.scheduler.daily_scheduler import get_scheduler
-        scheduler = get_scheduler()
-        if scheduler:
-            scheduler.stop()
-            logger.info("✅ Scheduler stopped")
-    except:
-        pass
+        import importlib
+        scheduler_module = importlib.import_module('src.scheduler.daily_scheduler')
+        get_scheduler = getattr(scheduler_module, 'get_scheduler', None)
+        
+        if get_scheduler:
+            scheduler = get_scheduler()
+            if scheduler:
+                scheduler.stop()
+                logger.info("✅ Scheduler stopped")
+    except Exception as e:
+        logger.warning(f"⚠️ Scheduler shutdown warning: {e}")
 
 # Initialize FastAPI app
 app = FastAPI(
